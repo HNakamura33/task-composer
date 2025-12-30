@@ -2,224 +2,11 @@
 //!
 //! 有向非巡回グラフ(DAG)を使ってタスクの依存関係を管理します。
 
-use std::collections::HashMap;
-use serde::Deserialize;
+mod types;
+mod dag;
 
-/// タスクを表す構造体
-///
-/// DAG内の各ノードに対応し、タスクの詳細情報を保持します。
-#[derive(Deserialize)]
-struct Task {
-    /// タスクの一意な識別子
-    task_id: String,
-    /// タスクの名前
-    name: String,
-    /// タスクの詳細説明
-    description: String,
-    /// タスクの優先度（0-255、数値が大きいほど高優先）
-    priority: u8,
-    /// タスクの現在の状態
-    status: Status,
-    /// タスク実行時のプロンプト
-    prompt: String,
-    /// タスクを実行するロール
-    role: Role,
-    /// このタスクが依存するタスクIDのリスト
-    dependencies: Vec<String>,
-}
-
-/// Task のデフォルト値
-impl Default for Task {
-    fn default() -> Self {
-        Task {
-            task_id: String::new(),
-            name: String::from("Untitled Task"),
-            description: String::new(),
-            priority: 0,
-            status: Status::default(),
-            prompt: String::new(),
-            role: Role::default(),
-            dependencies: vec![],
-        }
-    }
-}
-
-/// ロール（役割）を表す構造体
-///
-/// タスクを実行するエージェントの役割と権限を定義します。
-#[derive(Deserialize)]
-struct Role {
-    /// ロールの一意な識別子
-    role_id: String,
-    /// ロールの名前
-    name: String,
-    /// 利用可能なサブエージェントのリスト
-    subagents: Vec<String>,
-    /// このロールが持つスキルのリスト
-    skills: Vec<String>,
-    /// ロールの詳細説明
-    description: String,
-    /// 許可されたツールのリスト
-    tool_permissions: Vec<String>,
-    /// 許可されたファイル操作のリスト
-    file_permissions: Vec<String>,
-}
-
-/// Role のデフォルト値
-impl Default for Role {
-    fn default() -> Self {
-        Role {
-            role_id: String::new(),
-            name: String::from("Default Role"),
-            subagents: vec![],
-            skills: vec![],
-            description: String::new(),
-            tool_permissions: vec![],
-            file_permissions: vec![],
-        }
-    }
-}
-/// タスクの状態を表すenum
-///
-/// タスクのライフサイクルにおける現在の状態を示します。
-#[derive(Deserialize)]
-enum Status {
-    /// 未着手: タスクがまだ開始されていない
-    Pending,
-    /// 進行中: タスクが現在実行中
-    InProgress,
-    /// 完了: タスクが正常に完了した
-    Completed,
-}
-
-/// Status のデフォルト値
-impl Default for Status {
-    fn default() -> Self {
-        Status::Pending
-    }
-}
-
-
-/// JSON読み込み用のDAG構造体
-///
-/// JSONファイルからDAGを読み込む際の中間構造体です。
-#[derive(Deserialize)]
-struct DAGJson {
-    /// タスクのリスト
-    tasks: Vec<Task>,
-}
-
-/// DAG（有向非巡回グラフ）を表す構造体
-///
-/// ノード間の依存関係をエッジとして保持し、
-/// タスクの実行順序を決定するために使用します。
-struct DAG {
-    /// ノード間のエッジを保持するHashMap
-    /// - キー: 始点ノードID
-    /// - 値: 終点ノードIDのリスト
-    edges: HashMap<String, Vec<String>>,
-
-    /// ノードを保持するHashMap
-    /// - キー: ノードID
-    /// - 値: タスク情報
-    nodes: HashMap<String, Task>,
-}
-
-impl DAG {
-    /// 新しい空のDAGを作成する
-    ///
-    /// # Returns
-    /// 空のDAGインスタンス
-    ///
-    /// # Example
-    /// ```
-    /// let dag = DAG::new();
-    /// ```
-    fn new() -> Self {
-        DAG {
-            edges: HashMap::new(),
-            nodes: HashMap::new(),  
-        }
-    }
-
-    /// タスクをDAGに追加する
-    ///
-    /// # Arguments
-    /// * `task` - 追加するタスク
-    ///
-    /// # Example
-    /// ```
-    /// let mut dag = DAG::new();
-    /// let task = Task::default();
-    /// dag.add_task(task);
-    /// ```
-    fn add_task(&mut self, task: Task) {
-        let task_id = task.task_id.clone();
-        self.nodes.insert(task_id.clone(), task);
-        self.edges.entry(task_id).or_insert(vec![]);
-    }
-
-    /// 2つのノード間にエッジ（依存関係）を追加する
-    ///
-    /// # Arguments
-    /// * `from` - 始点ノードID（依存元）
-    /// * `to` - 終点ノードID（依存先）
-    ///
-    /// # Example
-    /// ```
-    /// dag.add_edge("1", "2");  // Task 1 → Task 2
-    /// ```
-    fn add_edge(&mut self, from: &str, to: &str) {
-        self.edges
-            .entry(from.to_string())
-            .or_insert(vec![])
-            .push(to.to_string());
-    }
-
-    /// JSON文字列からDAGを作成する
-    ///
-    /// # Arguments
-    /// * `json_str` - DAGを定義したJSON文字列
-    ///
-    /// # Returns
-    /// * `Ok(DAG)` - パース成功時
-    /// * `Err(serde_json::Error)` - パース失敗時
-    ///
-    /// # Example
-    /// ```
-    /// let json = r#"{"tasks": [...]}"#;
-    /// let dag = DAG::from_json(json)?;
-    /// ```
-    fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
-        let dag_json: DAGJson = serde_json::from_str(json_str)?;
-        let mut dag = DAG::new();
-
-        for task in dag_json.tasks {
-            let dependencies = task.dependencies.clone();
-            let task_id = task.task_id.clone();
-
-            dag.add_task(task);
-
-            // 依存関係をエッジとして追加
-            for dep in dependencies {
-                dag.add_edge(&dep, &task_id);
-            }
-        }
-
-        Ok(dag)
-    }
-
-    fn get_dependencies(&self, task_id: &str) -> Option<&Vec<String>> {
-        self.edges.get(task_id)
-    }
-}
-
-/// DAG のデフォルト値S
-impl Default for DAG {
-    fn default() -> Self {
-        DAG::new()
-    }
-}
+use crate::types::{Task, Role, Status};
+use crate::dag::DAG;
 
 #[cfg(test)]
 mod tests{
@@ -400,6 +187,371 @@ mod tests{
 
         // 存在しないタスクは None
         assert!(dag.get_dependencies("999").is_none());
+    }
+
+    #[test]
+    fn test_topological_sort() {
+        let json = std::fs::read_to_string("sample_dag.json").unwrap();
+        let dag = DAG::from_json(&json).unwrap();
+
+        let sorted = dag.topological_sort().unwrap();
+
+        // 4つのノードがソートされている
+        assert_eq!(sorted.len(), 4);
+
+        // 順序の検証: 依存関係が正しく反映されているか
+        let pos_1 = sorted.iter().position(|x| x == "1").unwrap();
+        let pos_2 = sorted.iter().position(|x| x == "2").unwrap();
+        let pos_3 = sorted.iter().position(|x| x == "3").unwrap();
+        let pos_4 = sorted.iter().position(|x| x == "4").unwrap();
+
+        // Task 1 は Task 2, 3 より前
+        assert!(pos_1 < pos_2);
+        assert!(pos_1 < pos_3);
+
+        // Task 2, 3 は Task 4 より前
+        assert!(pos_2 < pos_4);
+        assert!(pos_3 < pos_4);
+    }
+
+    #[test]
+    fn test_topological_sort_cycle_detection() {
+        // 循環のあるDAGを作成
+        let mut dag = DAG::new();
+
+        let task1 = Task {
+            task_id: "A".to_string(),
+            ..Default::default()
+        };
+        let task2 = Task {
+            task_id: "B".to_string(),
+            ..Default::default()
+        };
+        let task3 = Task {
+            task_id: "C".to_string(),
+            ..Default::default()
+        };
+
+        dag.add_task(task1);
+        dag.add_task(task2);
+        dag.add_task(task3);
+
+        // A → B → C → A の循環を作成
+        dag.add_edge("A", "B");
+        dag.add_edge("B", "C");
+        dag.add_edge("C", "A");
+
+        // 循環があるのでエラーを返すべき
+        let result = dag.topological_sort();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_compute_all_descendants() {
+        use std::collections::HashSet;
+
+        let json = std::fs::read_to_string("sample_dag.json").unwrap();
+        let dag = DAG::from_json(&json).unwrap();
+
+        let descendants = dag.compute_all_descendants();
+
+        // Task 1 の子孫: {2, 3, 4}
+        let desc_1 = descendants.get("1").unwrap();
+        assert!(desc_1.contains("2"));
+        assert!(desc_1.contains("3"));
+        assert!(desc_1.contains("4"));
+        assert_eq!(desc_1.len(), 3);
+
+        // Task 2 の子孫: {4}
+        let desc_2 = descendants.get("2").unwrap();
+        assert!(desc_2.contains("4"));
+        assert_eq!(desc_2.len(), 1);
+
+        // Task 3 の子孫: {4}
+        let desc_3 = descendants.get("3").unwrap();
+        assert!(desc_3.contains("4"));
+        assert_eq!(desc_3.len(), 1);
+
+        // Task 4 の子孫: {} (終端ノード)
+        let desc_4 = descendants.get("4").unwrap();
+        assert!(desc_4.is_empty());
+    }
+
+    #[test]
+    fn test_compute_all_descendants_large_graph() {
+        // 大きなグラフを作成
+        //
+        //       1
+        //      /|\
+        //     2 3 4
+        //     |X| |
+        //     5 6 7
+        //      \|/
+        //       8
+        //       |
+        //       9
+        //       |
+        //      10
+        //
+        let mut dag = DAG::new();
+
+        // 10個のタスクを作成
+        for i in 1..=10 {
+            let task = Task {
+                task_id: i.to_string(),
+                ..Default::default()
+            };
+            dag.add_task(task);
+        }
+
+        // エッジを追加
+        // レベル1 → レベル2
+        dag.add_edge("1", "2");
+        dag.add_edge("1", "3");
+        dag.add_edge("1", "4");
+
+        // レベル2 → レベル3 (クロス)
+        dag.add_edge("2", "5");
+        dag.add_edge("2", "6");
+        dag.add_edge("3", "5");
+        dag.add_edge("3", "6");
+        dag.add_edge("4", "7");
+
+        // レベル3 → レベル4
+        dag.add_edge("5", "8");
+        dag.add_edge("6", "8");
+        dag.add_edge("7", "8");
+
+        // レベル4 → レベル5 → レベル6
+        dag.add_edge("8", "9");
+        dag.add_edge("9", "10");
+
+        let descendants = dag.compute_all_descendants();
+
+        // Task 1 の子孫: {2,3,4,5,6,7,8,9,10} (全て)
+        let desc_1 = descendants.get("1").unwrap();
+        assert_eq!(desc_1.len(), 9);
+        for i in 2..=10 {
+            assert!(desc_1.contains(&i.to_string()), "1 should have {} as descendant", i);
+        }
+
+        // Task 2 の子孫: {5,6,8,9,10}
+        let desc_2 = descendants.get("2").unwrap();
+        assert_eq!(desc_2.len(), 5);
+        assert!(desc_2.contains("5"));
+        assert!(desc_2.contains("6"));
+        assert!(desc_2.contains("8"));
+        assert!(desc_2.contains("9"));
+        assert!(desc_2.contains("10"));
+
+        // Task 4 の子孫: {7,8,9,10}
+        let desc_4 = descendants.get("4").unwrap();
+        assert_eq!(desc_4.len(), 4);
+        assert!(desc_4.contains("7"));
+        assert!(desc_4.contains("8"));
+        assert!(desc_4.contains("9"));
+        assert!(desc_4.contains("10"));
+
+        // Task 8 の子孫: {9,10}
+        let desc_8 = descendants.get("8").unwrap();
+        assert_eq!(desc_8.len(), 2);
+        assert!(desc_8.contains("9"));
+        assert!(desc_8.contains("10"));
+
+        // Task 10 の子孫: {} (終端)
+        let desc_10 = descendants.get("10").unwrap();
+        assert!(desc_10.is_empty());
+    }
+
+    #[test]
+    fn test_compute_all_ancestors() {
+        let json = std::fs::read_to_string("sample_dag.json").unwrap();
+        let dag = DAG::from_json(&json).unwrap();
+
+        let ancestors = dag.compute_all_ancestors();
+
+        // Task 1 の祖先: {} (ルートノード)
+        let anc_1 = ancestors.get("1").unwrap();
+        assert!(anc_1.is_empty());
+
+        // Task 2 の祖先: {1}
+        let anc_2 = ancestors.get("2").unwrap();
+        assert!(anc_2.contains("1"));
+        assert_eq!(anc_2.len(), 1);
+
+        // Task 3 の祖先: {1}
+        let anc_3 = ancestors.get("3").unwrap();
+        assert!(anc_3.contains("1"));
+        assert_eq!(anc_3.len(), 1);
+
+        // Task 4 の祖先: {1, 2, 3}
+        let anc_4 = ancestors.get("4").unwrap();
+        assert!(anc_4.contains("1"));
+        assert!(anc_4.contains("2"));
+        assert!(anc_4.contains("3"));
+        assert_eq!(anc_4.len(), 3);
+    }
+
+    #[test]
+    fn test_compute_all_ancestors_large_graph() {
+        // 大きなグラフを作成（test_compute_all_descendants_large_graphと同じ構造）
+        let mut dag = DAG::new();
+
+        for i in 1..=10 {
+            let task = Task {
+                task_id: i.to_string(),
+                ..Default::default()
+            };
+            dag.add_task(task);
+        }
+
+        dag.add_edge("1", "2");
+        dag.add_edge("1", "3");
+        dag.add_edge("1", "4");
+        dag.add_edge("2", "5");
+        dag.add_edge("2", "6");
+        dag.add_edge("3", "5");
+        dag.add_edge("3", "6");
+        dag.add_edge("4", "7");
+        dag.add_edge("5", "8");
+        dag.add_edge("6", "8");
+        dag.add_edge("7", "8");
+        dag.add_edge("8", "9");
+        dag.add_edge("9", "10");
+
+        let ancestors = dag.compute_all_ancestors();
+
+        // Task 1 の祖先: {} (ルート)
+        let anc_1 = ancestors.get("1").unwrap();
+        assert!(anc_1.is_empty());
+
+        // Task 5 の祖先: {1, 2, 3}
+        let anc_5 = ancestors.get("5").unwrap();
+        assert!(anc_5.contains("1"));
+        assert!(anc_5.contains("2"));
+        assert!(anc_5.contains("3"));
+        assert_eq!(anc_5.len(), 3);
+
+        // Task 8 の祖先: {1,2,3,4,5,6,7}
+        let anc_8 = ancestors.get("8").unwrap();
+        assert_eq!(anc_8.len(), 7);
+        for i in 1..=7 {
+            assert!(anc_8.contains(&i.to_string()), "8 should have {} as ancestor", i);
+        }
+
+        // Task 10 の祖先: {1,2,3,4,5,6,7,8,9} (全て)
+        let anc_10 = ancestors.get("10").unwrap();
+        assert_eq!(anc_10.len(), 9);
+        for i in 1..=9 {
+            assert!(anc_10.contains(&i.to_string()), "10 should have {} as ancestor", i);
+        }
+    }
+
+    #[test]
+    fn test_get_all_parallel_pairs() {
+        // sample_dag.json: 1 → 2 → 4, 1 → 3 → 4
+        // 並行ペア: (2, 3) のみ
+        let json = std::fs::read_to_string("sample_dag.json").unwrap();
+        let dag = DAG::from_json(&json).unwrap();
+
+        let pairs = dag.get_all_parallel_pairs();
+
+        // 重複なしで (2,3) または (3,2) が1つだけあるべき
+        // ペアの数を確認
+        println!("Parallel pairs: {:?}", pairs);
+
+        // Task 2 と Task 3 のペアが存在することを確認
+        let has_2_3 = pairs.iter().any(|(a, b)|
+            (a == "2" && b == "3") || (a == "3" && b == "2")
+        );
+        assert!(has_2_3, "Should have (2,3) as parallel pair");
+
+        // 自己ペアがないことを確認
+        let has_self_pair = pairs.iter().any(|(a, b)| a == b);
+        assert!(!has_self_pair, "Should not have self pairs");
+    }
+
+    #[test]
+    fn test_get_all_parallel_pairs_large_graph() {
+        // 大きなグラフ:
+        //       1
+        //      /|\
+        //     2 3 4
+        //     |X| |
+        //     5 6 7
+        //      \|/
+        //       8
+        //       |
+        //       9
+        //       |
+        //      10
+        let mut dag = DAG::new();
+
+        for i in 1..=10 {
+            let task = Task {
+                task_id: i.to_string(),
+                ..Default::default()
+            };
+            dag.add_task(task);
+        }
+
+        dag.add_edge("1", "2");
+        dag.add_edge("1", "3");
+        dag.add_edge("1", "4");
+        dag.add_edge("2", "5");
+        dag.add_edge("2", "6");
+        dag.add_edge("3", "5");
+        dag.add_edge("3", "6");
+        dag.add_edge("4", "7");
+        dag.add_edge("5", "8");
+        dag.add_edge("6", "8");
+        dag.add_edge("7", "8");
+        dag.add_edge("8", "9");
+        dag.add_edge("9", "10");
+
+        let pairs = dag.get_all_parallel_pairs();
+        println!("Large graph parallel pairs: {:?}", pairs);
+
+        // 並行ペアのヘルパー関数
+        let has_pair = |a: &str, b: &str| {
+            pairs.iter().any(|(x, y)|
+                (x == a && y == b) || (x == b && y == a)
+            )
+        };
+
+        // レベル2の並行ペア: (2,3), (2,4), (3,4)
+        assert!(has_pair("2", "3"), "2 and 3 should be parallel");
+        assert!(has_pair("2", "4"), "2 and 4 should be parallel");
+        assert!(has_pair("3", "4"), "3 and 4 should be parallel");
+
+        // 異なるブランチの並行ペア
+        assert!(has_pair("5", "7"), "5 and 7 should be parallel");
+        assert!(has_pair("6", "7"), "6 and 7 should be parallel");
+        assert!(has_pair("4", "5"), "4 and 5 should be parallel");
+        assert!(has_pair("4", "6"), "4 and 6 should be parallel");
+        assert!(has_pair("2", "7"), "2 and 7 should be parallel");
+        assert!(has_pair("3", "7"), "3 and 7 should be parallel");
+
+        // 依存関係があるペアは含まれないことを確認
+        assert!(!has_pair("1", "2"), "1 and 2 should NOT be parallel (1→2)");
+        assert!(!has_pair("2", "5"), "2 and 5 should NOT be parallel (2→5)");
+        assert!(!has_pair("8", "9"), "8 and 9 should NOT be parallel (8→9)");
+        assert!(!has_pair("1", "10"), "1 and 10 should NOT be parallel (1→...→10)");
+        assert!(!has_pair("2", "10"), "2 and 10 should NOT be parallel (2→...→10)");
+        assert!(!has_pair("8", "10"), "8 and 10 should NOT be parallel (8→9→10)");
+
+        // 自己ペアがないことを確認
+        let has_self_pair = pairs.iter().any(|(a, b)| a == b);
+        assert!(!has_self_pair, "Should not have self pairs");
+
+        // 重複ペアがないことを確認
+        let mut sorted_pairs: Vec<(String, String)> = pairs.iter()
+            .map(|(a, b)| if a < b { (a.clone(), b.clone()) } else { (b.clone(), a.clone()) })
+            .collect();
+        sorted_pairs.sort();
+        let original_len = sorted_pairs.len();
+        sorted_pairs.dedup();
+        assert_eq!(sorted_pairs.len(), original_len, "Should not have duplicate pairs");
     }
 }
 
