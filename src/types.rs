@@ -4,13 +4,17 @@
 //! - [`Task`] - タスク情報
 //! - [`Role`] - ロール（役割）情報
 //! - [`Status`] - タスク状態
+//! - [`FilePermission`] - ファイルアクセス権限
+//! - [`ToolPermission`] - ツール実行権限
+//! - [`BashPermission`] - Bashコマンド権限
+//! - [`WritePermission`] - ファイル書き込み権限
 
 use serde::Deserialize;
 
 /// タスクを表す構造体
 ///
 /// DAG内の各ノードに対応し、タスクの詳細情報を保持します。
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Task {
     /// タスクの一意な識別子
     pub task_id: String,
@@ -28,6 +32,13 @@ pub struct Task {
     pub role: Role,
     /// このタスクが依存するタスクIDのリスト
     pub dependencies: Vec<String>,
+
+    /// 使用するExecutorの名前
+    pub executor: String,
+
+    /// タスク実行時の引数
+    #[serde(default)]
+    pub args: serde_json::Value,
 }
 
 /// Task のデフォルト値
@@ -42,6 +53,8 @@ impl Default for Task {
             prompt: String::new(),
             role: Role::default(),
             dependencies: vec![],
+            executor: String::new(),
+            args: serde_json::Value::Null,
         }
     }
 }
@@ -49,7 +62,7 @@ impl Default for Task {
 /// ロール（役割）を表す構造体
 ///
 /// タスクを実行するエージェントの役割と権限を定義します。
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Role {
     /// ロールの一意な識別子
     pub role_id: String,
@@ -61,10 +74,10 @@ pub struct Role {
     pub skills: Vec<String>,
     /// ロールの詳細説明
     pub description: String,
-    /// 許可されたツールのリスト
-    pub tool_permissions: Vec<String>,
-    /// 許可されたファイル操作のリスト
-    pub file_permissions: Vec<String>,
+    /// ツール実行権限
+    pub tool_permissions: ToolPermission,
+    /// ファイルアクセス権限
+    pub file_permissions: FilePermission,
 }
 
 /// Role のデフォルト値
@@ -76,16 +89,107 @@ impl Default for Role {
             subagents: vec![],
             skills: vec![],
             description: String::new(),
-            tool_permissions: vec![],
-            file_permissions: vec![],
+            tool_permissions: ToolPermission::default(),
+            file_permissions: FilePermission::default(),
         }
     }
 }
 
+/// ファイルアクセス権限を表す構造体
+///
+/// ファイルシステムへのアクセス制御を定義します。
+#[derive(Deserialize, Clone)]
+pub struct FilePermission {
+    /// 許可するパス（例: "${project_root}/src"）
+    pub allowed_paths: Vec<String>,
+    /// 拒否するパス（例: "${project_root}/.env"）
+    pub denied_paths: Vec<String>,
+    /// 読み取り専用パス（例: "${project_root}/vendor"）
+    pub read_only_paths: Vec<String>,
+}
+
+/// FilePermission のデフォルト値
+impl Default for FilePermission {
+    fn default() -> Self {
+        FilePermission {
+            allowed_paths: vec![],
+            denied_paths: vec![],
+            read_only_paths: vec![],
+        }
+    }
+}
+
+/// Bashコマンド実行権限を表す構造体
+///
+/// シェルコマンドの実行制御を定義します。
+#[derive(Deserialize, Clone)]
+pub struct BashPermission {
+    /// 許可するコマンド（例: "git", "npm"）
+    pub allowed_commands: Vec<String>,
+    /// ブロックするコマンド（例: "rm -rf /"）
+    pub blocked_commands: Vec<String>,
+    /// 確認が必要なコマンド（例: "git push"）
+    pub require_confirmation: Vec<String>,
+}
+
+/// BashPermission のデフォルト値
+impl Default for BashPermission {
+    fn default() -> Self {
+        BashPermission {
+            allowed_commands: vec![],
+            blocked_commands: vec![],
+            require_confirmation: vec![],
+        }
+    }
+}
+
+/// ファイル書き込み権限を表す構造体
+///
+/// ファイル書き込み操作の制限を定義します。
+#[derive(Deserialize, Clone)]
+pub struct WritePermission {
+    /// 最大ファイルサイズ（MB）
+    pub max_file_size_mb: Option<u32>,
+    /// 許可する拡張子（例: ".py", ".js"）
+    pub allowed_extensions: Vec<String>,
+}
+
+/// WritePermission のデフォルト値
+impl Default for WritePermission {
+    fn default() -> Self {
+        WritePermission {
+            max_file_size_mb: None,
+            allowed_extensions: vec![],
+        }
+    }
+}
+
+/// ツール実行権限を表す構造体
+///
+/// 各ツールの実行権限をまとめて管理します。
+#[derive(Deserialize, Clone)]
+pub struct ToolPermission {
+    /// Bashコマンド権限
+    pub bash: BashPermission,
+    /// ファイル書き込み権限
+    pub write: WritePermission,
+}
+
+/// ToolPermission のデフォルト値
+impl Default for ToolPermission {
+    fn default() -> Self {
+        ToolPermission {
+            bash: BashPermission::default(),
+            write: WritePermission::default(),
+        }
+    }
+}
+
+
 /// タスクの状態を表すenum
 ///
 /// タスクのライフサイクルにおける現在の状態を示します。
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub enum Status {
     /// 未着手: タスクがまだ開始されていない
     Pending,
@@ -100,4 +204,40 @@ impl Default for Status {
     fn default() -> Self {
         Status::Pending
     }
+}
+
+/// ファイルアクセスの競合を表す構造体
+///
+/// 並行実行可能な2つのタスク間で発生する
+/// ファイルアクセスの競合情報を保持します。
+#[derive(Deserialize)]
+pub struct FileConflict {
+    /// 競合する1つ目のタスクID
+    pub task_a: String,
+    /// 競合する2つ目のタスクID
+    pub task_b: String,
+    /// 競合が発生するファイルパス
+    pub file_path: String,
+    /// 競合の種類
+    pub conflict_type: FileConflictType,
+}
+
+/// ファイル競合の種類を表すenum
+///
+/// 並行タスク間で発生しうるファイルアクセス競合のパターンを定義します。
+#[derive(Deserialize)]
+pub enum FileConflictType {
+    /// 書き込み-書き込み競合: 両タスクが同じパスに書き込もうとする
+    WriteWrite,
+    /// 書き込み-読み取り競合: 一方が書き込み、他方が読み取りを行う
+    WriteRead,
+    /// 読み取り-書き込み競合: 一方が読み取り、他方が書き込みを行う
+    ReadWrite,
+}
+
+#[derive(Clone)]
+pub struct ExecutionResult {
+    pub task_id: String,
+    pub success: bool,
+    pub output: serde_json::Value,
 }

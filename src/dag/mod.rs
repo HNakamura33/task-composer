@@ -17,9 +17,10 @@
 //! let order = dag.topological_sort().unwrap();
 //! ```
 
-use std::{collections::{HashMap, HashSet}, os::unix::process::parent_id};
-use serde::{Deserialize};
-use crate::types::Task;
+use std::collections::{HashMap, HashSet};
+use serde::Deserialize;
+use crate::types::{Task, ExecutionResult};
+use crate::task_executor::{ExecutionContext, ExecutorRegistry, TaskManager};
 
 /// JSON読み込み用のDAG構造体
 ///
@@ -50,6 +51,8 @@ pub struct DAG {
     /// - 値: タスク情報
     pub nodes: HashMap<String, Task>,
 
+    
+    pub task_manager: TaskManager,
 
 }
 
@@ -75,6 +78,7 @@ impl DAG {
             edges: HashMap::new(),
             edges_rev: HashMap::new(),
             nodes: HashMap::new(),
+            task_manager: TaskManager::new(ExecutorRegistry::new()),
         }
     }
 
@@ -111,13 +115,12 @@ impl DAG {
             .entry(from.to_string())
             .or_insert(vec![])
             .push(to.to_string());
-        
+
         self.edges_rev
             .entry(to.to_string())
             .or_insert(vec![])
             .push(from.to_string());
     }
-
 
     /// JSON文字列からDAGを作成する
     ///
@@ -147,7 +150,6 @@ impl DAG {
             for dep in dependencies.clone() {
                 dag.add_edge(&dep, &task_id);
             }
-            
         }
 
         Ok(dag)
@@ -206,12 +208,7 @@ impl DAG {
         }
 
         let mut queue: Vec<String> = Vec::new();
-
-        for (node, &degree) in &in_degree {
-            if degree == 0 {
-                queue.push(node.clone());
-            }
-        }
+        Self::init_queue_with_roots(&in_degree, &mut queue);
 
         let mut result: Vec<String> = Vec::new();
 
@@ -220,12 +217,7 @@ impl DAG {
             result.push(current.clone());
 
             if let Some(to_list) = self.edges.get(&current) {
-                for to in to_list {
-                    *in_degree.get_mut(to).unwrap() -= 1;
-                    if in_degree[to] == 0 {
-                        queue.push(to.clone());
-                    }
-                }
+                Self::update_in_degrees_and_enqueue(to_list, &mut in_degree, &mut queue);
             }
         }
 
@@ -236,25 +228,134 @@ impl DAG {
         }
     }
 
+    pub fn execute(&mut self) -> Result<HashMap<String, ExecutionResult>, String> {
+        
+        let mut in_degree: HashMap<String, usize> = HashMap::new();
+        let mut results: HashMap<String, ExecutionResult> = HashMap::new();
+
+        for node in self.nodes.keys() {
+            in_degree.insert(node.clone(), 0);
+        }
+
+        for (_from, to_list) in &self.edges {
+            for to in to_list {
+                *in_degree.get_mut(to).unwrap() += 1;
+            }
+        }
+        
+        let mut queue: Vec<String> = Vec::new();
+
+        // 入次数が0のノード（ルートノード）をキューに追加
+        for (node, &degree) in &in_degree {
+            if degree == 0 {
+                queue.push(node.clone());
+            }
+        }
+
+        // キューからノードを取り出して実行
+        while !queue.is_empty() {
+            let current: String = queue.remove(0);
+            let task = self.nodes.get(&current).unwrap().clone();
+
+            // 依存タスクの結果を収集して ExecutionContext を作成
+            let mut previous_results: HashMap<String, ExecutionResult> = HashMap::new();
+            for dep_id in &task.dependencies {
+                if let Some(dep_result) = results.get(dep_id) {
+                    previous_results.insert(dep_id.clone(), dep_result.clone());
+                }
+            }
+
+            let ctx = ExecutionContext {
+                previous_results,
+                args: task.args.clone(),
+                env_vars: HashMap::new(),
+            };
+
+            // タスクを実行
+            let result = self.task_manager.add_task(task, ctx)?;
+            results.insert(current.clone(), result);
+
+            // 後続ノードの入次数を更新し、0になったらキューに追加
+            if let Some(to_list) = self.edges.get(&current) {
+                for to in to_list {
+                    *in_degree.get_mut(to).unwrap() -= 1;
+                    if in_degree[to] == 0 {
+                        queue.push(to.clone());
+                    }
+                }
+            }
+        }
+
+        if results.len() != self.nodes.len() {
+            Err("Graph has at least one cycle".to_string())
+        } else {
+            Ok( results )
+        }
+        // 実行ロジックをここに実装
+    }
+
+    /// 入次数が0のノード（ルートノード）をキューに追加する
+    ///
+    /// トポロジカルソートの初期化時に使用するヘルパーメソッド。
+    /// 依存関係を持たない（入次数が0の）ノードを処理待ちキューに追加します。
+    ///
+    /// # Arguments
+    /// * `in_degree` - 各ノードの入次数を保持するHashMap
+    /// * `queue` - 処理待ちノードのキュー
+    fn init_queue_with_roots(
+        in_degree: &HashMap<String, usize>,
+        queue: &mut Vec<String>,
+    ) {
+        for (node, &degree) in in_degree {
+            if degree == 0 {
+                queue.push(node.clone());
+            }
+        }
+    }
+
+    /// 後続ノードの入次数を更新し、入次数が0になったノードをキューに追加する
+    ///
+    /// トポロジカルソートのKahnアルゴリズムで使用するヘルパーメソッド。
+    /// 処理済みノードの後続ノードに対して、入次数を1減らし、
+    /// 入次数が0になったノードを処理待ちキューに追加します。
+    ///
+    /// # Arguments
+    /// * `to_list` - 後続ノードIDのリスト
+    /// * `in_degree` - 各ノードの入次数を保持するHashMap
+    /// * `queue` - 処理待ちノードのキュー
+    fn update_in_degrees_and_enqueue(
+        to_list: &[String],
+        in_degree: &mut HashMap<String, usize>,
+        queue: &mut Vec<String>,
+    ) {
+        for to in to_list {
+            *in_degree.get_mut(to).unwrap() -= 1;
+            if in_degree[to] == 0 {
+                queue.push(to.clone());
+            }
+        }
+    }    
+
     /// 全ノードの子孫集合を計算する
     ///
     /// トポロジカル順序の逆順で処理することで、
     /// 動的計画法により効率的に全ノードの子孫を計算します。
     ///
     /// # Returns
-    /// 各ノードIDをキーとし、その子孫のノードID集合を値とするHashMap
+    /// * `Ok(HashMap)` - 各ノードIDをキーとし、その子孫のノードID集合を値とするHashMap
+    /// * `Err(String)` - グラフに循環が含まれている場合
     ///
     /// # Example
     /// ```
-    /// let descendants = dag.compute_all_descendants();
+    /// let descendants = dag.compute_all_descendants()?;
     /// let desc_1 = descendants.get("1").unwrap();
     /// // desc_1 には "1" から到達可能な全ノードIDが含まれる
     /// ```
     ///
-    /// # Panics
-    /// グラフに循環が含まれている場合、パニックします。
-    pub fn compute_all_descendants(&self) -> HashMap<String, HashSet<String>> {
-        let sorted_nodes = self.topological_sort().unwrap();
+    /// # Errors
+    /// グラフに循環が含まれている場合、エラーを返します。
+    pub fn compute_all_descendants(&self) -> Result<HashMap<String, HashSet<String>>, String> {
+        let sorted_nodes = self.topological_sort()?;
         let mut descendants: HashMap<String, HashSet<String>> = HashMap::new();
 
         for node in sorted_nodes.iter().rev() {
@@ -269,9 +370,9 @@ impl DAG {
                     }
                 }
             }
-            descendants.insert(node.clone(), node_descendants);   
+            descendants.insert(node.clone(), node_descendants);
         }
-        descendants
+        Ok(descendants)
     }
 
     /// 全ノードの祖先集合を計算する
@@ -280,22 +381,23 @@ impl DAG {
     /// 動的計画法により効率的に全ノードの祖先を計算します。
     ///
     /// # Returns
-    /// 各ノードIDをキーとし、その祖先のノードID集合を値とするHashMap
+    /// * `Ok(HashMap)` - 各ノードIDをキーとし、その祖先のノードID集合を値とするHashMap
+    /// * `Err(String)` - グラフに循環が含まれている場合
     ///
     /// # Example
     /// ```
-    /// let ancestors = dag.compute_all_ancestors();
+    /// let ancestors = dag.compute_all_ancestors()?;
     /// let anc_4 = ancestors.get("4").unwrap();
     /// // anc_4 には "4" に到達可能な全ノードIDが含まれる
     /// ```
     ///
-    /// # Panics
-    /// グラフに循環が含まれている場合、パニックします。
-    pub fn compute_all_ancestors(&self) -> HashMap<String, HashSet<String>> {
-        let sorted_nodes: Vec<String> = self.topological_sort().unwrap();
+    /// # Errors
+    /// グラフに循環が含まれている場合、エラーを返します。
+    pub fn compute_all_ancestors(&self) -> Result<HashMap<String, HashSet<String>>, String> {
+        let sorted_nodes: Vec<String> = self.topological_sort()?;
         let mut ancestors: HashMap<String, HashSet<String>> = HashMap::new();
 
-        for node in sorted_nodes.iter(){
+        for node in sorted_nodes.iter() {
             let mut node_ancestors: HashSet<String> = HashSet::new();
             if let Some(parents) = self.edges_rev.get(node) {
                 for parent in parents {
@@ -307,10 +409,10 @@ impl DAG {
                     }
                 }
             }
-            ancestors.insert(node.clone(), node_ancestors);   
+            ancestors.insert(node.clone(), node_ancestors);
         }
 
-        ancestors
+        Ok(ancestors)
     }
 
     /// 全ての並行実行可能なノードペアを取得する
@@ -319,39 +421,43 @@ impl DAG {
     /// つまり、どちらも他方の祖先でも子孫でもない場合、並行実行可能です。
     ///
     /// # Returns
-    /// 並行実行可能なノードペアのリスト。
-    /// 各ペアは重複なく、(A, B) の形式で A < B（辞書順）となります。
+    /// * `Ok(Vec)` - 並行実行可能なノードペアのリスト（重複なし、A < B の辞書順）
+    /// * `Err(String)` - グラフに循環が含まれている場合
     ///
     /// # Example
     /// ```
-    /// let pairs = dag.get_all_parallel_pairs();
+    /// let pairs = dag.get_all_parallel_pairs()?;
     /// for (a, b) in pairs {
     ///     println!("{} と {} は並行実行可能", a, b);
     /// }
     /// ```
     ///
-    /// # Panics
-    /// グラフに循環が含まれている場合、パニックします。
-    pub fn get_all_parallel_pairs(&self) -> Vec<(String, String)> {
-        let descendants: HashMap<String, HashSet<String>> = self.compute_all_descendants();
-        let ancestors: HashMap<String, HashSet<String>> = self.compute_all_ancestors();
+    /// # Errors
+    /// グラフに循環が含まれている場合、エラーを返します。
+    pub fn get_all_parallel_pairs(&self) -> Result<Vec<(String, String)>, String> {
+        let descendants: HashMap<String, HashSet<String>> = self.compute_all_descendants()?;
+        let ancestors: HashMap<String, HashSet<String>> = self.compute_all_ancestors()?;
 
         let mut pairs: Vec<(String, String)> = Vec::new();
 
-        for (node_id_desc, node_desc) in descendants{
+        for (node_id_desc, node_desc) in descendants {
             if let Some(node_anc) = ancestors.get(&node_id_desc) {
                 for node_id_anc in ancestors.keys() {
-                    if node_id_desc >= node_id_anc.clone() { continue; }
-                    if !node_desc.contains(&node_id_anc.clone()) && !node_anc.contains(&node_id_anc.clone()) {
+                    if node_id_desc >= node_id_anc.clone() {
+                        continue;
+                    }
+                    if !node_desc.contains(&node_id_anc.clone())
+                        && !node_anc.contains(&node_id_anc.clone())
+                    {
                         pairs.push((node_id_desc.clone(), node_id_anc.clone()));
-                    }   
+                    }
                 }
             }
         }
 
-        pairs
-
+        Ok(pairs)
     }
 }
 
-
+#[cfg(test)]
+mod tests;

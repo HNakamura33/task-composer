@@ -7,6 +7,8 @@
       "priority": 1,
       "status": "Pending",
       "prompt": "Initialize the project and install dependencies",
+      "executor": "log",
+      "args": {"env": "development", "verbose": true},
       "dependencies": [],
       "role": {
         "role_id": "role_setup",
@@ -14,8 +16,22 @@
         "subagents": [],
         "skills": ["environment"],
         "description": "Role for environment setup",
-        "tool_permissions": ["bash"],
-        "file_permissions": ["read", "write"]
+        "tool_permissions": {
+          "bash": {
+            "allowed_commands": ["git", "npm", "cargo"],
+            "blocked_commands": ["rm -rf /"],
+            "require_confirmation": ["git push"]
+          },
+          "write": {
+            "max_file_size_mb": 10,
+            "allowed_extensions": [".rs", ".toml", ".json"]
+          }
+        },
+        "file_permissions": {
+          "allowed_paths": ["${project_root}/src"],
+          "denied_paths": ["${project_root}/.env"],
+          "read_only_paths": ["${project_root}/vendor"]
+        }
       }
     },
     {
@@ -25,6 +41,8 @@
       "priority": 2,
       "status": "Pending",
       "prompt": "Create database models and relationships",
+      "executor": "log",
+      "args": {"schema_version": "v2"},
       "dependencies": ["1"],
       "role": {
         "role_id": "role_db",
@@ -32,8 +50,22 @@
         "subagents": [],
         "skills": ["database", "sql"],
         "description": "Role for database tasks",
-        "tool_permissions": ["sql"],
-        "file_permissions": ["read", "write"]
+        "tool_permissions": {
+          "bash": {
+            "allowed_commands": ["psql", "sqlite3"],
+            "blocked_commands": ["DROP DATABASE"],
+            "require_confirmation": ["ALTER TABLE"]
+          },
+          "write": {
+            "max_file_size_mb": 5,
+            "allowed_extensions": [".sql", ".rs"]
+          }
+        },
+        "file_permissions": {
+          "allowed_paths": ["${project_root}/src", "${project_root}/migrations"],
+          "denied_paths": ["${project_root}/.env"],
+          "read_only_paths": []
+        }
       }
     },
     {
@@ -43,6 +75,8 @@
       "priority": 2,
       "status": "Pending",
       "prompt": "Create API routes and handlers",
+      "executor": "log",
+      "args": {"api_version": "1.0"},
       "dependencies": ["1"],
       "role": {
         "role_id": "role_api",
@@ -50,8 +84,22 @@
         "subagents": [],
         "skills": ["rust", "api"],
         "description": "Role for API development",
-        "tool_permissions": ["bash"],
-        "file_permissions": ["read", "write"]
+        "tool_permissions": {
+          "bash": {
+            "allowed_commands": ["cargo", "curl"],
+            "blocked_commands": [],
+            "require_confirmation": []
+          },
+          "write": {
+            "max_file_size_mb": 10,
+            "allowed_extensions": [".rs", ".toml"]
+          }
+        },
+        "file_permissions": {
+          "allowed_paths": ["${project_root}/src/api"],
+          "denied_paths": ["${project_root}/.env", "${project_root}/secrets"],
+          "read_only_paths": ["${project_root}/vendor"]
+        }
       }
     },
     {
@@ -61,6 +109,8 @@
       "priority": 3,
       "status": "Pending",
       "prompt": "Connect API endpoints to database",
+      "executor": "log",
+      "args": {},
       "dependencies": ["2", "3"],
       "role": {
         "role_id": "role_integration",
@@ -68,8 +118,22 @@
         "subagents": [],
         "skills": ["rust", "database"],
         "description": "Role for integration tasks",
-        "tool_permissions": ["bash", "sql"],
-        "file_permissions": ["read", "write"]
+        "tool_permissions": {
+          "bash": {
+            "allowed_commands": ["cargo", "psql"],
+            "blocked_commands": [],
+            "require_confirmation": ["cargo publish"]
+          },
+          "write": {
+            "max_file_size_mb": 10,
+            "allowed_extensions": [".rs", ".sql", ".toml"]
+          }
+        },
+        "file_permissions": {
+          "allowed_paths": ["${project_root}/src"],
+          "denied_paths": ["${project_root}/.env"],
+          "read_only_paths": ["${project_root}/vendor"]
+        }
       }
     }
   ]
