@@ -1,0 +1,76 @@
+{
+  "tasks": [
+    {
+      "task_id": "1",
+      "name": "Setup Environment",
+      "description": "Set up the development environment",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "Initialize the project and install dependencies",
+      "dependencies": [],
+      "role": {
+        "role_id": "role_setup",
+        "name": "Setup Role",
+        "subagents": [],
+        "skills": ["environment"],
+        "description": "Role for environment setup",
+        "tool_permissions": ["bash"],
+        "file_permissions": ["read", "write"]
+      }
+    },
+    {
+      "task_id": "2",
+      "name": "Design Database",
+      "description": "Design the database schema",
+      "priority": 2,
+      "status": "Pending",
+      "prompt": "Create database models and relationships",
+      "dependencies": ["1"],
+      "role": {
+        "role_id": "role_db",
+        "name": "Database Role",
+        "subagents": [],
+        "skills": ["database", "sql"],
+        "description": "Role for database tasks",
+        "tool_permissions": ["sql"],
+        "file_permissions": ["read", "write"]
+      }
+    },
+    {
+      "task_id": "3",
+      "name": "Implement API",
+      "description": "Implement REST API endpoints",
+      "priority": 2,
+      "status": "Pending",
+      "prompt": "Create API routes and handlers",
+      "dependencies": ["1"],
+      "role": {
+        "role_id": "role_api",
+        "name": "API Role",
+        "subagents": [],
+        "skills": ["rust", "api"],
+        "description": "Role for API development",
+        "tool_permissions": ["bash"],
+        "file_permissions": ["read", "write"]
+      }
+    },
+    {
+      "task_id": "4",
+      "name": "Integration",
+      "description": "Integrate API with database",
+      "priority": 3,
+      "status": "Pending",
+      "prompt": "Connect API endpoints to database",
+      "dependencies": ["2", "3"],
+      "role": {
+        "role_id": "role_integration",
+        "name": "Integration Role",
+        "subagents": [],
+        "skills": ["rust", "database"],
+        "description": "Role for integration tasks",
+        "tool_permissions": ["bash", "sql"],
+        "file_permissions": ["read", "write"]
+      }
+    }
+  ]
+}
