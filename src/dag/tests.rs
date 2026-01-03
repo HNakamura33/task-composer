@@ -30,6 +30,7 @@ fn test_add_task() {
         dependencies: vec![],
         executor: String::from("log"),
         args: serde_json::Value::Null,
+        inputs: serde_json::Value::Null,
     };
 
     dag.add_task(task);
@@ -58,6 +59,7 @@ fn test_add_edge() {
         dependencies: vec![],
         executor: String::from("log"),
         args: serde_json::Value::Null,
+        inputs: serde_json::Value::Null,
     };
     let task2 = Task {
         task_id: "2".to_string(),
@@ -78,6 +80,7 @@ fn test_add_edge() {
         dependencies: vec![],
         executor: String::from("log"),
         args: serde_json::Value::Null,
+        inputs: serde_json::Value::Null,
     };
 
     let id1 = task1.task_id.clone();

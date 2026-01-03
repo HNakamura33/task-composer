@@ -6,6 +6,7 @@ mod types;
 mod dag;
 mod conflict;
 mod task_executor;
+mod path_resolver;
 
 use crate::dag::DAG;
 use crate::task_executor::LogExecutor;

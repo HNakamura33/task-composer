@@ -21,6 +21,7 @@ use std::collections::{HashMap, HashSet};
 use serde::Deserialize;
 use crate::types::{Task, ExecutionResult};
 use crate::task_executor::{ExecutionContext, ExecutorRegistry, TaskManager};
+use crate::path_resolver::resolve_inputs;
 
 /// JSON読み込み用のDAG構造体
 ///
@@ -265,9 +266,14 @@ impl DAG {
                 }
             }
 
+            // inputsを解決してargsにマージ
+            let resolved_inputs = resolve_inputs(&task.inputs, &previous_results)
+                .map_err(|e| format!("Failed to resolve inputs for task {}: {}", task.task_id, e))?;
+
+            let merged_args = merge_json_values(task.args.clone(), resolved_inputs);
+
             let ctx = ExecutionContext {
-                previous_results,
-                args: task.args.clone(),
+                args: merged_args,
                 env_vars: HashMap::new(),
             };
 
@@ -456,6 +462,25 @@ impl DAG {
         }
 
         Ok(pairs)
+    }
+}
+
+/// 2つのJSON値をマージする
+///
+/// - 両方がObjectの場合: キーをマージ（overrideで上書き）
+/// - それ以外: overrideがNullでなければoverrideを返す、Nullならbaseを返す
+fn merge_json_values(base: serde_json::Value, override_val: serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+
+    match (base, override_val) {
+        (Value::Object(mut base_map), Value::Object(override_map)) => {
+            for (key, value) in override_map {
+                base_map.insert(key, value);
+            }
+            Value::Object(base_map)
+        }
+        (base, Value::Null) => base,
+        (_, override_val) => override_val,
     }
 }
 

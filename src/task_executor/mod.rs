@@ -8,8 +8,7 @@ pub use log_executor::LogExecutor;
 
 
 pub struct ExecutionContext {
-    pub previous_results: HashMap<String, ExecutionResult>,
-    pub args: serde_json::Value, 
+    pub args: serde_json::Value,
     pub env_vars: std::collections::HashMap<String, String>,
 }
 

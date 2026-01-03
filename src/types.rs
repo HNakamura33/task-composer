@@ -30,11 +30,16 @@ pub struct Task {
     pub prompt: String,
     /// タスクを実行するロール
     pub role: Role,
-    /// このタスクが依存するタスクIDのリスト
-    pub dependencies: Vec<String>,
-
+    
     /// 使用するExecutorの名前
     pub executor: String,
+
+    /// このタスクが依存するタスクIDのリスト
+    pub dependencies: Vec<String>,
+    
+    /// タスク実行時の入力データ（パス参照を含む）
+    #[serde(default)]
+    pub inputs: serde_json::Value,
 
     /// タスク実行時の引数
     #[serde(default)]
@@ -52,8 +57,9 @@ impl Default for Task {
             status: Status::default(),
             prompt: String::new(),
             role: Role::default(),
-            dependencies: vec![],
             executor: String::new(),
+            dependencies: vec![],
+            inputs: serde_json::Value::Null,
             args: serde_json::Value::Null,
         }
     }

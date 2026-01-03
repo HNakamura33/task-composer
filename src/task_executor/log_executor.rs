@@ -47,17 +47,9 @@ impl TaskExecutor for LogExecutor {
             println!("  Dependencies: {:?}", task.dependencies);
         }
 
-        // 引数
+        // 引数（inputsから解決した値を含む）
         if !ctx.args.is_null() {
             println!("  Args:        {}", ctx.args);
-        }
-
-        // 前回の結果
-        if !ctx.previous_results.is_empty() {
-            println!("  Previous Results:");
-            for (task_id, result) in &ctx.previous_results {
-                println!("    - {}: success={}, output={}", task_id, result.success, result.output);
-            }
         }
 
         println!("========================================\n");

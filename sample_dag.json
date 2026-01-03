@@ -111,6 +111,11 @@
       "prompt": "Connect API endpoints to database",
       "executor": "log",
       "args": {},
+      "inputs": {
+        "db_task_id": "$.2.output.task_id",
+        "api_task_id": "$.3.output.task_id",
+        "messages": ["$.2.output.message", "$.3.output.message"]
+      },
       "dependencies": ["2", "3"],
       "role": {
         "role_id": "role_integration",
