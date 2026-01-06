@@ -613,3 +613,264 @@ fn test_get_all_parallel_pairs_large_graph() {
         "Should not have duplicate pairs"
     );
 }
+
+// ============================================
+// execute_async のテスト
+// ============================================
+
+use crate::task_executor::{TaskExecutor, ExecutionContext, ExecutionResult, LogExecutor};
+use async_trait::async_trait;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc as StdArc;
+
+/// テスト用のシンプルなExecutor
+struct TestExecutor {
+    execution_count: StdArc<AtomicUsize>,
+}
+
+impl TestExecutor {
+    fn new(counter: StdArc<AtomicUsize>) -> Self {
+        TestExecutor {
+            execution_count: counter,
+        }
+    }
+}
+
+#[async_trait]
+impl TaskExecutor for TestExecutor {
+    fn name(&self) -> &str {
+        "test"
+    }
+
+    async fn execute_task(
+        &self,
+        task: &Task,
+        _ctx: &ExecutionContext,
+    ) -> Result<ExecutionResult, String> {
+        self.execution_count.fetch_add(1, Ordering::SeqCst);
+        Ok(ExecutionResult {
+            task_id: task.task_id.clone(),
+            success: true,
+            output: serde_json::json!({
+                "task_id": task.task_id,
+                "message": format!("Task {} executed", task.task_id)
+            }),
+        })
+    }
+}
+
+#[tokio::test]
+async fn test_execute_async_simple() {
+    let mut dag = DAG::new();
+
+    let task = Task {
+        task_id: "1".to_string(),
+        executor: "test".to_string(),
+        ..Default::default()
+    };
+    dag.add_task(task);
+
+    let counter = StdArc::new(AtomicUsize::new(0));
+    dag.register_executor(Box::new(TestExecutor::new(counter.clone())));
+
+    let results = dag.execute_async().await.unwrap();
+
+    assert_eq!(results.len(), 1);
+    assert!(results.get("1").unwrap().success);
+    assert_eq!(counter.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn test_execute_async_with_dependencies() {
+    let mut dag = DAG::new();
+
+    // 1 → 2 → 3
+    for i in 1..=3 {
+        let task = Task {
+            task_id: i.to_string(),
+            executor: "test".to_string(),
+            dependencies: if i > 1 {
+                vec![(i - 1).to_string()]
+            } else {
+                vec![]
+            },
+            ..Default::default()
+        };
+        dag.add_task(task);
+    }
+    dag.add_edge("1", "2");
+    dag.add_edge("2", "3");
+
+    let counter = StdArc::new(AtomicUsize::new(0));
+    dag.register_executor(Box::new(TestExecutor::new(counter.clone())));
+
+    let results = dag.execute_async().await.unwrap();
+
+    assert_eq!(results.len(), 3);
+    assert_eq!(counter.load(Ordering::SeqCst), 3);
+}
+
+#[tokio::test]
+async fn test_execute_async_parallel_execution() {
+    // 並列実行のテスト: root → (a, b, c) → merge
+    let mut dag = DAG::new();
+
+    dag.add_task(Task {
+        task_id: "root".to_string(),
+        executor: "test".to_string(),
+        ..Default::default()
+    });
+
+    for name in ["a", "b", "c"] {
+        dag.add_task(Task {
+            task_id: name.to_string(),
+            executor: "test".to_string(),
+            dependencies: vec!["root".to_string()],
+            ..Default::default()
+        });
+        dag.add_edge("root", name);
+    }
+
+    dag.add_task(Task {
+        task_id: "merge".to_string(),
+        executor: "test".to_string(),
+        dependencies: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+        ..Default::default()
+    });
+    dag.add_edge("a", "merge");
+    dag.add_edge("b", "merge");
+    dag.add_edge("c", "merge");
+
+    let counter = StdArc::new(AtomicUsize::new(0));
+    dag.register_executor(Box::new(TestExecutor::new(counter.clone())));
+
+    let results = dag.execute_async().await.unwrap();
+
+    assert_eq!(results.len(), 5);
+    assert_eq!(counter.load(Ordering::SeqCst), 5);
+
+    // 全てのタスクが成功していることを確認
+    for (_, result) in &results {
+        assert!(result.success);
+    }
+}
+
+#[tokio::test]
+async fn test_execute_async_with_log_executor() {
+    let json = r#"
+    {
+        "tasks": [
+            {
+                "task_id": "1",
+                "name": "Task 1",
+                "description": "First task",
+                "priority": 1,
+                "status": "Pending",
+                "prompt": "Execute task 1",
+                "executor": "log",
+                "args": {},
+                "dependencies": [],
+                "role": {
+                    "role_id": "r1",
+                    "name": "Role 1",
+                    "subagents": [],
+                    "skills": [],
+                    "description": "",
+                    "tool_permissions": {
+                        "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+                        "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+                    },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            },
+            {
+                "task_id": "2",
+                "name": "Task 2",
+                "description": "Second task",
+                "priority": 2,
+                "status": "Pending",
+                "prompt": "Execute task 2",
+                "executor": "log",
+                "args": {},
+                "dependencies": ["1"],
+                "role": {
+                    "role_id": "r2",
+                    "name": "Role 2",
+                    "subagents": [],
+                    "skills": [],
+                    "description": "",
+                    "tool_permissions": {
+                        "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+                        "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+                    },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            }
+        ]
+    }
+    "#;
+
+    let mut dag = DAG::from_json(json).unwrap();
+    dag.register_executor(Box::new(LogExecutor::new()));
+
+    let results = dag.execute_async().await.unwrap();
+
+    assert_eq!(results.len(), 2);
+    assert!(results.get("1").unwrap().success);
+    assert!(results.get("2").unwrap().success);
+}
+
+#[tokio::test]
+async fn test_execute_async_inputs_resolution() {
+    // inputsの解決をテスト
+    let json = r#"
+    {
+        "tasks": [
+            {
+                "task_id": "producer",
+                "name": "Producer",
+                "description": "",
+                "priority": 1,
+                "status": "Pending",
+                "prompt": "",
+                "executor": "log",
+                "args": {},
+                "dependencies": [],
+                "role": {
+                    "role_id": "r", "name": "R", "subagents": [], "skills": [], "description": "",
+                    "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": 10, "allowed_extensions": [] } },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            },
+            {
+                "task_id": "consumer",
+                "name": "Consumer",
+                "description": "",
+                "priority": 2,
+                "status": "Pending",
+                "prompt": "",
+                "executor": "log",
+                "args": {},
+                "inputs": {
+                    "producer_id": "$.producer.output.task_id"
+                },
+                "dependencies": ["producer"],
+                "role": {
+                    "role_id": "r", "name": "R", "subagents": [], "skills": [], "description": "",
+                    "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": 10, "allowed_extensions": [] } },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            }
+        ]
+    }
+    "#;
+
+    let mut dag = DAG::from_json(json).unwrap();
+    dag.register_executor(Box::new(LogExecutor::new()));
+
+    let results = dag.execute_async().await.unwrap();
+
+    assert_eq!(results.len(), 2);
+    assert!(results.get("producer").unwrap().success);
+    assert!(results.get("consumer").unwrap().success);
+}

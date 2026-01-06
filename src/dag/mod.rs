@@ -19,9 +19,12 @@
 
 use std::collections::{HashMap, HashSet};
 use serde::Deserialize;
-use crate::types::{Task, ExecutionResult};
-use crate::task_executor::{ExecutionContext, ExecutorRegistry, TaskManager};
+use crate::types::{Task, Config};
+use crate::task_executor::{ExecutionContext, ExecutorRegistry, TaskExecutor, ExecutionResult};
 use crate::path_resolver::resolve_inputs;
+use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc;
+
 
 /// JSON読み込み用のDAG構造体
 ///
@@ -53,7 +56,11 @@ pub struct DAG {
     pub nodes: HashMap<String, Task>,
 
     
-    pub task_manager: TaskManager,
+    // pub task_manager: TaskManager,
+
+    pub registry: Arc<ExecutorRegistry>,
+
+    config: Config,
 
 }
 
@@ -79,8 +86,24 @@ impl DAG {
             edges: HashMap::new(),
             edges_rev: HashMap::new(),
             nodes: HashMap::new(),
-            task_manager: TaskManager::new(ExecutorRegistry::new()),
+            // task_manager: TaskManager::new(Arc::clone(&registry)),
+            registry: Arc::new(ExecutorRegistry::new()),
+            config: Config::default(),
+            
         }
+    }
+
+    /// Executorを登録する
+    ///
+    /// # Arguments
+    /// * `executor` - 登録するExecutor
+    ///
+    /// # Panics
+    /// registryが既に共有されている場合はパニック
+    pub fn register_executor(&mut self, executor: Box<dyn TaskExecutor + Send + Sync>) {
+        Arc::get_mut(&mut self.registry)
+            .expect("Cannot register executor: registry is already shared")
+            .register(executor);
     }
 
     /// タスクをDAGに追加する
@@ -229,15 +252,106 @@ impl DAG {
         }
     }
 
-    pub fn execute(&mut self) -> Result<HashMap<String, ExecutionResult>, String> {
+    // pub fn execute(&mut self) -> Result<HashMap<String, ExecutionResult>, String> {
         
-        let mut in_degree: HashMap<String, usize> = HashMap::new();
-        let mut results: HashMap<String, ExecutionResult> = HashMap::new();
+    //     let mut in_degree: HashMap<String, usize> = HashMap::new();
+    //     let mut results: HashMap<String, ExecutionResult> = HashMap::new();
 
+    //     for node in self.nodes.keys() {
+    //         in_degree.insert(node.clone(), 0);
+    //     }
+
+    //     for (_from, to_list) in &self.edges {
+    //         for to in to_list {
+    //             *in_degree.get_mut(to).unwrap() += 1;
+    //         }
+    //     }
+        
+    //     let mut queue: Vec<String> = Vec::new();
+
+    //     // 入次数が0のノード（ルートノード）をキューに追加
+    //     for (node, &degree) in &in_degree {
+    //         if degree == 0 {
+    //             queue.push(node.clone());
+    //         }
+    //     }
+
+    //     // キューからノードを取り出して実行
+    //     while !queue.is_empty() {
+    //         let current: String = queue.remove(0);
+    //         let task = self.nodes.get(&current).unwrap().clone();
+
+    //         // 依存タスクの結果を収集して ExecutionContext を作成
+    //         let mut previous_results: HashMap<String, ExecutionResult> = HashMap::new();
+    //         for dep_id in &task.dependencies {
+    //             if let Some(dep_result) = results.get(dep_id) {
+    //                 previous_results.insert(dep_id.clone(), dep_result.clone());
+    //             }
+    //         }
+
+    //         // inputsを解決してargsにマージ
+    //         let resolved_inputs = resolve_inputs(&task.inputs, &previous_results)
+    //             .map_err(|e| format!("Failed to resolve inputs for task {}: {}", task.task_id, e))?;
+
+    //         let merged_args = merge_json_values(task.args.clone(), resolved_inputs);
+
+    //         let ctx = ExecutionContext {
+    //             args: merged_args,
+    //             env_vars: HashMap::new(),
+    //         };
+
+    //         // タスクを実行
+    //         let result = self.task_manager.add_task(task, ctx)?;
+    //         results.insert(current.clone(), result);
+
+    //         // 後続ノードの入次数を更新し、0になったらキューに追加
+    //         if let Some(to_list) = self.edges.get(&current) {
+    //             for to in to_list {
+    //                 *in_degree.get_mut(to).unwrap() -= 1;
+    //                 if in_degree[to] == 0 {
+    //                     queue.push(to.clone());
+    //                 }
+    //             }
+    //         }
+    //     }
+
+    //     if results.len() != self.nodes.len() {
+    //         Err("Graph has at least one cycle".to_string())
+    //     } else {
+    //         Ok( results )
+    //     }
+    //     // 実行ロジックをここに実装
+    // }
+
+    /// DAGを非同期で並列実行する
+    ///
+    /// トポロジカル順序に従ってタスクを実行します。
+    /// 依存関係のないタスクは`config.max_concurrent_tasks`の上限まで並列実行されます。
+    ///
+    /// # Returns
+    /// - `Ok(HashMap<String, ExecutionResult>)`: 全タスクの実行結果
+    /// - `Err(String)`: 循環依存がある場合やタスク実行に失敗した場合
+    ///
+    /// # Example
+    /// ```ignore
+    /// let mut dag = DAG::from_json(&json)?;
+    /// dag.register_executor(Box::new(LogExecutor::new()));
+    /// let results = dag.execute_async().await?;
+    /// ```
+    ///
+    /// # Algorithm
+    /// カーンのアルゴリズムを使用したトポロジカルソートに基づいて実行:
+    /// 1. 入次数が0のタスクをキューに追加
+    /// 2. キューからタスクを取り出し、`tokio::spawn`で並列実行
+    /// 3. タスク完了時に後続タスクの入次数を減らし、0になったらキューに追加
+    /// 4. 全タスク完了まで繰り返す
+    pub async fn execute_async(&mut self) -> Result<HashMap<String, ExecutionResult>, String> {
+        let mut in_degree: HashMap<String, usize> = HashMap::new();
+        
         for node in self.nodes.keys() {
             in_degree.insert(node.clone(), 0);
         }
-
+        
         for (_from, to_list) in &self.edges {
             for to in to_list {
                 *in_degree.get_mut(to).unwrap() += 1;
@@ -245,60 +359,87 @@ impl DAG {
         }
         
         let mut queue: Vec<String> = Vec::new();
-
+        
         // 入次数が0のノード（ルートノード）をキューに追加
         for (node, &degree) in &in_degree {
             if degree == 0 {
                 queue.push(node.clone());
             }
         }
+        
+        let results: Arc<Mutex<HashMap<String, ExecutionResult>>> = Arc::new(Mutex::new(HashMap::new()));
+        let (tx, mut rx) = mpsc::channel::<(String, ExecutionResult)>(100);
 
-        // キューからノードを取り出して実行
-        while !queue.is_empty() {
-            let current: String = queue.remove(0);
-            let task = self.nodes.get(&current).unwrap().clone();
+        let mut running_tasks = 0;
 
-            // 依存タスクの結果を収集して ExecutionContext を作成
-            let mut previous_results: HashMap<String, ExecutionResult> = HashMap::new();
-            for dep_id in &task.dependencies {
-                if let Some(dep_result) = results.get(dep_id) {
-                    previous_results.insert(dep_id.clone(), dep_result.clone());
+        loop {
+            while running_tasks < self.config.max_concurrent_tasks {
+                let Some(task_id) = queue.pop() else { break; };
+                let task = self.nodes.get(&task_id).unwrap().clone();
+                let tx = tx.clone();
+                let results_clone = Arc::clone(&results);
+
+                let mut previous_results: HashMap<String, ExecutionResult> = HashMap::new();
+                for dep_id in &task.dependencies {
+                    if let Some(dep_result) = results_clone.lock().unwrap().get(dep_id) {
+                        previous_results.insert(dep_id.clone(), dep_result.clone());
+                    }
                 }
+
+                // inputsを解決してargsにマージ
+                let resolved_inputs = resolve_inputs(&task.inputs, &previous_results)
+                    .map_err(|e| format!("Failed to resolve inputs for task {}: {}", task.task_id, e))?;
+
+                let merged_args = merge_json_values(task.args.clone(), resolved_inputs);
+
+                let ctx = ExecutionContext {
+                    args: merged_args,
+                    env_vars: HashMap::new(),
+                };
+
+                let registry = Arc::clone(&self.registry);
+
+                tokio::spawn(async move {
+                    let executor = registry.get(&task.executor).unwrap();
+                    let result = executor.execute_task(&task, &ctx).await;
+                    tx.send((task_id, result.unwrap())).await.unwrap();
+                });
+                // Note: この行はspawn直後に実行される（タスク完了を待たない）
+                running_tasks += 1;
             }
 
-            // inputsを解決してargsにマージ
-            let resolved_inputs = resolve_inputs(&task.inputs, &previous_results)
-                .map_err(|e| format!("Failed to resolve inputs for task {}: {}", task.task_id, e))?;
+            if running_tasks == 0 && queue.is_empty() {
+                break;
+            }
 
-            let merged_args = merge_json_values(task.args.clone(), resolved_inputs);
-
-            let ctx = ExecutionContext {
-                args: merged_args,
-                env_vars: HashMap::new(),
-            };
-
-            // タスクを実行
-            let result = self.task_manager.add_task(task, ctx)?;
-            results.insert(current.clone(), result);
-
-            // 後続ノードの入次数を更新し、0になったらキューに追加
-            if let Some(to_list) = self.edges.get(&current) {
-                for to in to_list {
-                    *in_degree.get_mut(to).unwrap() -= 1;
-                    if in_degree[to] == 0 {
-                        queue.push(to.clone());
+            
+            if let Some((task_id, result)) = rx.recv().await {
+                running_tasks -= 1;
+                results.lock().unwrap().insert(task_id.clone(), result);
+                
+                if let Some(to_list) = self.edges.get(&task_id) {
+                    for to in to_list {
+                        *in_degree.get_mut(to).unwrap() -= 1;
+                        if in_degree[to] == 0 {
+                            queue.push(to.clone());
+                        }
                     }
                 }
             }
+            
+
         }
 
-        if results.len() != self.nodes.len() {
+
+        if results.lock().unwrap().len() != self.nodes.len() {
             Err("Graph has at least one cycle".to_string())
         } else {
-            Ok( results )
+            Ok(results.lock().unwrap().clone())
         }
-        // 実行ロジックをここに実装
+        
     }
+
+
 
     /// 入次数が0のノード（ルートノード）をキューに追加する
     ///

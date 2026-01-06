@@ -241,9 +241,35 @@ pub enum FileConflictType {
     ReadWrite,
 }
 
-#[derive(Clone)]
-pub struct ExecutionResult {
-    pub task_id: String,
-    pub success: bool,
-    pub output: serde_json::Value,
+/// DAG実行時の設定
+///
+/// タスク実行の並列度などを制御します。
+///
+/// # Example
+/// ```
+/// use task_composer::types::Config;
+///
+/// let config = Config::default();
+/// assert_eq!(config.max_concurrent_tasks, 4);
+///
+/// let custom_config = Config { max_concurrent_tasks: 10 };
+/// ```
+#[derive(Debug, Clone)]
+pub struct Config {
+    /// 同時に実行できるタスクの最大数
+    ///
+    /// この値を超えるタスクは、実行中のタスクが完了するまでキューで待機します。
+    /// デフォルト値は4です。
+    pub max_concurrent_tasks: usize,
+}
+
+impl Default for Config {
+    /// デフォルト設定を作成
+    ///
+    /// - `max_concurrent_tasks`: 4
+    fn default() -> Self {
+        Config {
+            max_concurrent_tasks: 4,
+        }
+    }
 }

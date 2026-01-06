@@ -2,9 +2,12 @@
 //!
 //! テストやデバッグ用途に使用します。
 
-use super::{ExecutionContext, TaskExecutor};
-use crate::types::{ExecutionResult, Task};
+use super::{ExecutionContext, TaskExecutor, ExecutionResult};
+use crate::types::{Task};
 use serde_json::json;
+use async_trait::async_trait;
+use tokio::time::{sleep, Duration};
+use rand::Rng;
 
 /// タスク情報をログ出力するExecutor
 ///
@@ -23,16 +26,22 @@ impl Default for LogExecutor {
     }
 }
 
+#[async_trait]
 impl TaskExecutor for LogExecutor {
     fn name(&self) -> &str {
         "log"
     }
 
-    fn execute_task(
+    async fn execute_task(
         &self,
         task: &Task,
         ctx: &ExecutionContext,
     ) -> Result<ExecutionResult, String> {
+        
+        // ランダムな遅延（100ms〜1000ms）でタスク実行時間をシミュレート
+        let delay_ms = rand::thread_rng().gen_range(100..=1000);
+        sleep(Duration::from_millis(delay_ms)).await;
+        
         println!("========================================");
         println!("Executing Task: {}", task.name);
         println!("========================================");
@@ -53,6 +62,8 @@ impl TaskExecutor for LogExecutor {
         }
 
         println!("========================================\n");
+
+        println!("  [Task {} completed]", task.task_id);
 
         Ok(ExecutionResult {
             task_id: task.task_id.clone(),

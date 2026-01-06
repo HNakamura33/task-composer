@@ -13,7 +13,7 @@
 //! - `$.1.output.items[0]` - task "1" の output.items の最初の要素
 
 use std::collections::HashMap;
-use crate::types::ExecutionResult;
+use crate::task_executor::ExecutionResult;
 
 /// パス解決時のエラー
 #[derive(Debug, PartialEq)]
