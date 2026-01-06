@@ -35,6 +35,58 @@ def parse_agents(agents_data: dict | None) -> dict[str, AgentDefinition] | None:
     }
 
 
+def build_role_system_prompt(role: dict) -> str | None:
+    """roleからシステムプロンプトを構築する
+
+    roleの情報をClaudeが理解できるシステムプロンプトに変換する。
+    ClaudeAgentOptionsには存在しないrole固有のフィールドをここで処理する。
+    """
+    if not role:
+        return None
+
+    parts = []
+
+    # ロール名と説明（ClaudeAgentOptionsにはないフィールド）
+    if role.get("name"):
+        parts.append(f"# Role: {role['name']}")
+    if role.get("description"):
+        parts.append(f"\n{role['description']}")
+
+    # スキル（ClaudeAgentOptionsにはないフィールド）
+    if role.get("skills"):
+        skills_str = ", ".join(role["skills"])
+        parts.append(f"\n## Skills: {skills_str}")
+
+    # Note: subagentsはoptions.agentsと重複するため除外
+
+    # ファイル権限情報（ClaudeAgentOptionsのadd_dirsとは異なる詳細な権限）
+    file_perms = role.get("file_permissions", {})
+    if file_perms.get("allowed_paths"):
+        parts.append(f"\n## Allowed Paths: {', '.join(file_perms['allowed_paths'])}")
+    if file_perms.get("denied_paths"):
+        parts.append(f"\n## Denied Paths (DO NOT ACCESS): {', '.join(file_perms['denied_paths'])}")
+    if file_perms.get("read_only_paths"):
+        parts.append(f"\n## Read-Only Paths: {', '.join(file_perms['read_only_paths'])}")
+
+    # ツール権限情報（ClaudeAgentOptionsのallowed_toolsとは異なる詳細な権限）
+    tool_perms = role.get("tool_permissions", {})
+    bash_perms = tool_perms.get("bash", {})
+    if bash_perms.get("allowed_commands"):
+        parts.append(f"\n## Allowed Bash Commands: {', '.join(bash_perms['allowed_commands'])}")
+    if bash_perms.get("blocked_commands"):
+        parts.append(f"\n## Blocked Bash Commands: {', '.join(bash_perms['blocked_commands'])}")
+    if bash_perms.get("require_confirmation"):
+        parts.append(f"\n## Commands Requiring Confirmation: {', '.join(bash_perms['require_confirmation'])}")
+
+    write_perms = tool_perms.get("write", {})
+    if write_perms.get("allowed_extensions"):
+        parts.append(f"\n## Allowed File Extensions: {', '.join(write_perms['allowed_extensions'])}")
+    if write_perms.get("max_file_size_mb"):
+        parts.append(f"\n## Max File Size: {write_perms['max_file_size_mb']}MB")
+
+    return "\n".join(parts) if parts else None
+
+
 def json_to_options(data: dict | None = None) -> ClaudeAgentOptions:
     """JSONデータからClaudeAgentOptionsを作成する
 
@@ -140,17 +192,42 @@ async def request_claude_code(prompt: str, options: ClaudeAgentOptions):
 
 
 @mcp.tool()
-async def claude_code_query(prompt: str, options: dict | None = None) -> str:
+async def claude_code_query(
+    prompt: str,
+    options: dict | None = None,
+    extra_options: dict | None = None
+) -> str:
     """Claude Codeにクエリを送信し、結果をJSON形式で返す
 
     Args:
         prompt: Claude Codeに送信するプロンプト
         options: ClaudeAgentOptionsの設定（オプション）
+        extra_options: 追加オプション（オプション）
+            - role: タスクのロール情報。system_promptとして注入される。
+                - name: ロール名
+                - description: ロールの説明
+                - skills: スキルのリスト
+                - role_id: ロールID
+                - tool_permissions: ツール権限（bash, write）- CLAUDE.md形式の詳細な権限
+                - file_permissions: ファイル権限（allowed_paths, denied_paths, read_only_paths）
+                - Note: subagentsはoptions.agentsと重複するため使用されない
 
     Returns:
         結果のJSON文字列
     """
+    # optionsからClaudeAgentOptionsを作成
     agent_options = json_to_options(options)
+
+    # extra_options.roleからsystem_promptを生成し、既存のsystem_promptと結合
+    if extra_options and extra_options.get("role"):
+        role = extra_options["role"]
+        role_system_prompt = build_role_system_prompt(role)
+        if role_system_prompt:
+            if agent_options.system_prompt:
+                agent_options.system_prompt = f"{role_system_prompt}\n\n{agent_options.system_prompt}"
+            else:
+                agent_options.system_prompt = role_system_prompt
+
     result = await request_claude_code(prompt, agent_options)
 
     # 結果をJSONに変換

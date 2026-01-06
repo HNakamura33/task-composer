@@ -239,6 +239,7 @@ fn resolve_self_reference(
         "dependencies" => serde_json::to_value(&task.dependencies).unwrap(),
         "inputs" => task.inputs.clone(),
         "args" => task.args.clone(),
+        "role" => serde_json::to_value(&task.role).unwrap(),
         _ => return Err(PathResolveError::SelfFieldNotFound(first_field.to_string())),
     };
 
@@ -406,6 +407,8 @@ mod tests {
 
     /// テスト用のTaskを作成
     fn create_test_task() -> Task {
+        use crate::types::{Role, ToolPermission, FilePermission, BashPermission, WritePermission};
+
         Task {
             task_id: "test-task".to_string(),
             name: "Test Task".to_string(),
@@ -415,6 +418,29 @@ mod tests {
             executor: "test-executor".to_string(),
             dependencies: vec!["1".to_string(), "2".to_string()],
             args: json!({"key": "value"}),
+            role: Role {
+                role_id: "test-role".to_string(),
+                name: "Test Role".to_string(),
+                subagents: vec!["agent1".to_string()],
+                skills: vec!["coding".to_string(), "testing".to_string()],
+                description: "A test role".to_string(),
+                tool_permissions: ToolPermission {
+                    bash: BashPermission {
+                        allowed_commands: vec!["git".to_string(), "cargo".to_string()],
+                        blocked_commands: vec![],
+                        require_confirmation: vec![],
+                    },
+                    write: WritePermission {
+                        max_file_size_mb: Some(10),
+                        allowed_extensions: vec![".rs".to_string()],
+                    },
+                },
+                file_permissions: FilePermission {
+                    allowed_paths: vec!["src/".to_string()],
+                    denied_paths: vec![".env".to_string()],
+                    read_only_paths: vec![],
+                },
+            },
             ..Default::default()
         }
     }
@@ -786,5 +812,90 @@ mod tests {
         let result = resolve_inputs(&input, &ctx);
 
         assert!(matches!(result, Err(PathResolveError::SelfFieldNotFound(_))));
+    }
+
+    // ============================================
+    // $.self.role 参照のテスト
+    // ============================================
+
+    #[test]
+    fn test_self_reference_role_name() {
+        let results = create_test_results();
+        let task = create_test_task();
+        let ctx = ctx_with_task(&results, &task);
+        let input = json!("$.self.role.name");
+
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+
+        assert_eq!(resolved, json!("Test Role"));
+    }
+
+    #[test]
+    fn test_self_reference_role_skills() {
+        let results = create_test_results();
+        let task = create_test_task();
+        let ctx = ctx_with_task(&results, &task);
+        let input = json!("$.self.role.skills");
+
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+
+        assert_eq!(resolved, json!(["coding", "testing"]));
+    }
+
+    #[test]
+    fn test_self_reference_role_full() {
+        let results = create_test_results();
+        let task = create_test_task();
+        let ctx = ctx_with_task(&results, &task);
+        let input = json!("$.self.role");
+
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+
+        // roleオブジェクト全体が取得できることを確認
+        assert_eq!(resolved["name"], json!("Test Role"));
+        assert_eq!(resolved["role_id"], json!("test-role"));
+        assert_eq!(resolved["skills"], json!(["coding", "testing"]));
+    }
+
+    #[test]
+    fn test_self_reference_role_nested_permissions() {
+        let results = create_test_results();
+        let task = create_test_task();
+        let ctx = ctx_with_task(&results, &task);
+        let input = json!("$.self.role.tool_permissions.bash.allowed_commands");
+
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+
+        assert_eq!(resolved, json!(["git", "cargo"]));
+    }
+
+    #[test]
+    fn test_self_reference_role_embedded() {
+        let results = create_test_results();
+        let task = create_test_task();
+        let ctx = ctx_with_task(&results, &task);
+        let input = json!("Role: ${$.self.role.name}, Skills: ${$.self.role.skills}");
+
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+
+        assert_eq!(resolved, json!("Role: Test Role, Skills: [\"coding\",\"testing\"]"));
+    }
+
+    #[test]
+    fn test_self_reference_role_in_object() {
+        let results = create_test_results();
+        let task = create_test_task();
+        let ctx = ctx_with_task(&results, &task);
+        let input = json!({
+            "agent_role": "$.self.role.name",
+            "agent_skills": "$.self.role.skills",
+            "permissions": "$.self.role.tool_permissions"
+        });
+
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+
+        assert_eq!(resolved["agent_role"], json!("Test Role"));
+        assert_eq!(resolved["agent_skills"], json!(["coding", "testing"]));
+        assert!(resolved["permissions"]["bash"].is_object());
     }
 }

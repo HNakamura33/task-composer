@@ -1,0 +1,114 @@
+{
+  "tasks": [
+    {
+      "task_id": "1",
+      "name": "Security Code Review",
+      "description": "Review code for security vulnerabilities",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "Security review",
+      "executor": "mcp",
+      "args": {
+        "connection": {
+          "type": "stdio",
+          "command": "uv",
+          "args": ["run", "--directory", "/Users/hirotaka/task-composer/mcp_servers/claude_code_mcp", "main.py", "serve"],
+          "env": {}
+        },
+        "tool": "claude_code_query",
+        "arguments": {
+          "prompt": "Review the path_resolver.rs file for potential security issues. Focus on: 1) Input validation 2) Path traversal risks 3) Error handling. Be concise.",
+          "options": {
+            "cwd": "/Users/hirotaka/task-composer/experiment",
+            "max_turns": 5,
+            "allowed_tools": ["Read", "Grep", "Glob"]
+          },
+          "extra_options": {
+            "role": "$.self.role"
+          }
+        }
+      },
+      "dependencies": [],
+      "role": {
+        "role_id": "security_reviewer",
+        "name": "Security Reviewer",
+        "subagents": [],
+        "skills": ["security", "code-review", "vulnerability-analysis"],
+        "description": "Reviews code for security vulnerabilities and best practices. Focuses on input validation, authentication, and data protection.",
+        "tool_permissions": {
+          "bash": {
+            "allowed_commands": ["git", "cargo"],
+            "blocked_commands": ["rm", "curl", "wget"],
+            "require_confirmation": ["git push"]
+          },
+          "write": {
+            "max_file_size_mb": 0,
+            "allowed_extensions": []
+          }
+        },
+        "file_permissions": {
+          "allowed_paths": ["src/"],
+          "denied_paths": [".env", "secrets/", "credentials/"],
+          "read_only_paths": ["src/", "tests/"]
+        }
+      }
+    },
+    {
+      "task_id": "2",
+      "name": "Documentation Writer",
+      "description": "Write documentation based on code analysis",
+      "priority": 2,
+      "status": "Pending",
+      "prompt": "Write docs",
+      "executor": "mcp",
+      "args": {
+        "connection": {
+          "type": "stdio",
+          "command": "uv",
+          "args": ["run", "--directory", "/Users/hirotaka/task-composer/mcp_servers/claude_code_mcp", "main.py", "serve"],
+          "env": {}
+        },
+        "tool": "claude_code_query",
+        "arguments": {
+          "prompt": "Based on the security review, create a brief SECURITY.md file documenting: 1) Security considerations for path_resolver 2) Input validation approach 3) Recommended usage patterns. Keep it under 50 lines.",
+          "options": {
+            "cwd": "/Users/hirotaka/task-composer/experiment",
+            "max_turns": 10,
+            "permission_mode": "acceptEdits",
+            "allowed_tools": ["Read", "Write"]
+          },
+          "extra_options": {
+            "role": "$.self.role"
+          }
+        }
+      },
+      "dependencies": ["1"],
+      "role": {
+        "role_id": "doc_writer",
+        "name": "Documentation Writer",
+        "subagents": [],
+        "skills": ["documentation", "technical-writing", "markdown"],
+        "description": "Writes clear and concise technical documentation. Specializes in security documentation and developer guides.",
+        "tool_permissions": {
+          "bash": {
+            "allowed_commands": [],
+            "blocked_commands": [],
+            "require_confirmation": []
+          },
+          "write": {
+            "max_file_size_mb": 1,
+            "allowed_extensions": [".md", ".txt"]
+          }
+        },
+        "file_permissions": {
+          "allowed_paths": ["docs/", "./"],
+          "denied_paths": ["src/", ".env"],
+          "read_only_paths": ["src/"]
+        }
+      }
+    }
+  ],
+  "config": {
+    "max_concurrent_tasks": 2
+  }
+}
