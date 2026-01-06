@@ -12,7 +12,7 @@
         "connection": {
           "type": "stdio",
           "command": "uv",
-          "args": ["run", "--directory", "/Users/hirotaka/claude-code-expriment/claude-code-mcp", "main.py", "serve"],
+          "args": ["run", "--directory", "/Users/hirotaka/task-composer/mcp_servers/claude_code_mcp", "main.py", "serve"],
           "env": {}
         },
         "tool": "claude_code_query",
@@ -55,7 +55,7 @@
         "connection": {
           "type": "stdio",
           "command": "uv",
-          "args": ["run", "--directory", "/Users/hirotaka/claude-code-expriment/claude-code-mcp", "main.py", "serve"],
+          "args": ["run", "--directory", "/Users/hirotaka/task-composer/mcp_servers/claude_code_mcp", "main.py", "serve"],
           "env": {}
         },
         "tool": "claude_code_query",
@@ -98,7 +98,7 @@
         "connection": {
           "type": "stdio",
           "command": "uv",
-          "args": ["run", "--directory", "/Users/hirotaka/claude-code-expriment/claude-code-mcp", "main.py", "serve"],
+          "args": ["run", "--directory", "/Users/hirotaka/task-composer/mcp_servers/claude_code_mcp", "main.py", "serve"],
           "env": {}
         },
         "tool": "claude_code_query",
@@ -141,7 +141,7 @@
         "connection": {
           "type": "stdio",
           "command": "uv",
-          "args": ["run", "--directory", "/Users/hirotaka/claude-code-expriment/claude-code-mcp", "main.py", "serve"],
+          "args": ["run", "--directory", "/Users/hirotaka/task-composer/mcp_servers/claude_code_mcp", "main.py", "serve"],
           "env": {}
         },
         "tool": "claude_code_query",

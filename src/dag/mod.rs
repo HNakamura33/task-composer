@@ -21,7 +21,7 @@ use std::collections::{HashMap, HashSet};
 use serde::Deserialize;
 use crate::types::{Task, Config};
 use crate::task_executor::{ExecutionContext, ExecutorRegistry, TaskExecutor, ExecutionResult};
-use crate::path_resolver::resolve_inputs;
+use crate::path_resolver::{resolve_inputs, ResolveContext};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
@@ -387,7 +387,11 @@ impl DAG {
                 }
 
                 // inputsを解決してargsにマージ
-                let resolved_inputs = resolve_inputs(&task.inputs, &previous_results)
+                let resolve_ctx = ResolveContext {
+                    previous_results: &previous_results,
+                    current_task: Some(&task),
+                };
+                let resolved_inputs = resolve_inputs(&task.inputs, &resolve_ctx)
                     .map_err(|e| format!("Failed to resolve inputs for task {}: {}", task.task_id, e))?;
 
                 let merged_args = merge_json_values(task.args.clone(), resolved_inputs);
