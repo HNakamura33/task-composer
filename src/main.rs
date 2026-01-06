@@ -9,7 +9,7 @@ mod task_executor;
 mod path_resolver;
 
 use crate::dag::DAG;
-use crate::task_executor::LogExecutor;
+use crate::task_executor::{LogExecutor, McpExecutor};
 
 #[tokio::main]
 async fn main() {
@@ -22,8 +22,9 @@ async fn main() {
     let mut dag = DAG::from_json(&json)
         .expect("Failed to parse JSON");
 
-    // LogExecutor を登録
+    // Executorを登録
     dag.register_executor(Box::new(LogExecutor::new()));
+    dag.register_executor(Box::new(McpExecutor::new()));
 
     // 読み込んだDAGの情報を表示
     println!("Loaded {} tasks", dag.nodes.len());

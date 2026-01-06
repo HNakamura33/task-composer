@@ -42,9 +42,7 @@ impl TaskExecutor for LogExecutor {
         let delay_ms = rand::thread_rng().gen_range(100..=1000);
         sleep(Duration::from_millis(delay_ms)).await;
         
-        println!("========================================");
         println!("Executing Task: {}", task.name);
-        println!("========================================");
         println!("  ID:          {}", task.task_id);
         println!("  Description: {}", task.description);
         println!("  Priority:    {}", task.priority);
@@ -61,7 +59,10 @@ impl TaskExecutor for LogExecutor {
             println!("  Args:        {}", ctx.args);
         }
 
-        println!("========================================\n");
+        let result_message = format!("Task '{}' logged successfully", task.name);
+        println!("\n  --- Result ---");
+        println!("  {}", result_message);
+        println!("  --- End ---\n");
 
         println!("  [Task {} completed]", task.task_id);
 
@@ -71,7 +72,7 @@ impl TaskExecutor for LogExecutor {
             output: json!({
                 "executor": "log",
                 "task_id": task.task_id,
-                "message": "Task logged successfully"
+                "message": result_message
             }),
         })
     }

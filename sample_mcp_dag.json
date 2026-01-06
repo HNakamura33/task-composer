@@ -1,0 +1,209 @@
+{
+  "tasks": [
+    {
+      "task_id": "1",
+      "name": "Analyze Code",
+      "description": "Analyze main code structure",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "Analyze main code",
+      "executor": "mcp",
+      "args": {
+        "connection": {
+          "type": "stdio",
+          "command": "uv",
+          "args": ["run", "--directory", "/Users/hirotaka/claude-code-expriment/claude-code-mcp", "main.py", "serve"],
+          "env": {}
+        },
+        "tool": "claude_code_query",
+        "arguments": {
+          "prompt": "Read src/main.rs and summarize: 1) What operations are supported 2) How to use the CLI 3) Main structs and functions. Be concise.",
+          "options": {
+            "cwd": "/Users/hirotaka/task-composer/experiment",
+            "max_turns": 5,
+            "allowed_tools": ["Read"]
+          }
+        }
+      },
+      "dependencies": [],
+      "role": {
+        "role_id": "analyzer",
+        "name": "Code Analyzer",
+        "subagents": [],
+        "skills": ["analysis"],
+        "description": "Analyzes code",
+        "tool_permissions": {
+          "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+          "write": { "max_file_size_mb": 0, "allowed_extensions": [] }
+        },
+        "file_permissions": {
+          "allowed_paths": [],
+          "denied_paths": [],
+          "read_only_paths": ["${project_root}"]
+        }
+      }
+    },
+    {
+      "task_id": "2",
+      "name": "Analyze Tests",
+      "description": "Analyze test cases",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "Analyze tests",
+      "executor": "mcp",
+      "args": {
+        "connection": {
+          "type": "stdio",
+          "command": "uv",
+          "args": ["run", "--directory", "/Users/hirotaka/claude-code-expriment/claude-code-mcp", "main.py", "serve"],
+          "env": {}
+        },
+        "tool": "claude_code_query",
+        "arguments": {
+          "prompt": "Read src/main.rs and find all #[test] functions. List each test name and what it tests. Be concise.",
+          "options": {
+            "cwd": "/Users/hirotaka/task-composer/experiment",
+            "max_turns": 5,
+            "allowed_tools": ["Read"]
+          }
+        }
+      },
+      "dependencies": [],
+      "role": {
+        "role_id": "test_analyzer",
+        "name": "Test Analyzer",
+        "subagents": [],
+        "skills": ["testing"],
+        "description": "Analyzes tests",
+        "tool_permissions": {
+          "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+          "write": { "max_file_size_mb": 0, "allowed_extensions": [] }
+        },
+        "file_permissions": {
+          "allowed_paths": [],
+          "denied_paths": [],
+          "read_only_paths": ["${project_root}"]
+        }
+      }
+    },
+    {
+      "task_id": "3",
+      "name": "Check Cargo.toml",
+      "description": "Check project metadata",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "Check Cargo.toml",
+      "executor": "mcp",
+      "args": {
+        "connection": {
+          "type": "stdio",
+          "command": "uv",
+          "args": ["run", "--directory", "/Users/hirotaka/claude-code-expriment/claude-code-mcp", "main.py", "serve"],
+          "env": {}
+        },
+        "tool": "claude_code_query",
+        "arguments": {
+          "prompt": "Read Cargo.toml and report: project name, version, edition, and any dependencies.",
+          "options": {
+            "cwd": "/Users/hirotaka/task-composer/experiment",
+            "max_turns": 3,
+            "allowed_tools": ["Read"]
+          }
+        }
+      },
+      "dependencies": [],
+      "role": {
+        "role_id": "meta_checker",
+        "name": "Metadata Checker",
+        "subagents": [],
+        "skills": ["analysis"],
+        "description": "Checks metadata",
+        "tool_permissions": {
+          "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+          "write": { "max_file_size_mb": 0, "allowed_extensions": [] }
+        },
+        "file_permissions": {
+          "allowed_paths": [],
+          "denied_paths": [],
+          "read_only_paths": ["${project_root}"]
+        }
+      }
+    },
+    {
+      "task_id": "4",
+      "name": "Create README",
+      "description": "Create README.md from analysis",
+      "priority": 2,
+      "status": "Pending",
+      "prompt": "Create README",
+      "executor": "mcp",
+      "args": {
+        "connection": {
+          "type": "stdio",
+          "command": "uv",
+          "args": ["run", "--directory", "/Users/hirotaka/claude-code-expriment/claude-code-mcp", "main.py", "serve"],
+          "env": {}
+        },
+        "tool": "claude_code_query",
+        "arguments": {
+          "prompt": "Create README.md for this Rust CLI calculator. Include: title (sample-cli), description, build instructions, usage examples for all 4 operations (add/sub/mul/div), and test instructions. Keep it concise.",
+          "options": {
+            "cwd": "/Users/hirotaka/task-composer/experiment",
+            "max_turns": 10,
+            "permission_mode": "acceptEdits",
+            "allowed_tools": ["Read", "Write"]
+          }
+        }
+      },
+      "dependencies": ["1", "2", "3"],
+      "role": {
+        "role_id": "writer",
+        "name": "README Writer",
+        "subagents": [],
+        "skills": ["documentation"],
+        "description": "Writes README",
+        "tool_permissions": {
+          "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+          "write": { "max_file_size_mb": 5, "allowed_extensions": [".md"] }
+        },
+        "file_permissions": {
+          "allowed_paths": ["${project_root}"],
+          "denied_paths": [],
+          "read_only_paths": []
+        }
+      }
+    },
+    {
+      "task_id": "5",
+      "name": "Log Completion",
+      "description": "Log that README was created",
+      "priority": 3,
+      "status": "Pending",
+      "prompt": "Log completion",
+      "executor": "log",
+      "args": {
+        "message": "README.md creation completed"
+      },
+      "dependencies": ["4"],
+      "role": {
+        "role_id": "logger",
+        "name": "Logger",
+        "subagents": [],
+        "skills": ["logging"],
+        "description": "Logs events",
+        "tool_permissions": {
+          "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+          "write": { "max_file_size_mb": 0, "allowed_extensions": [] }
+        },
+        "file_permissions": {
+          "allowed_paths": [],
+          "denied_paths": [],
+          "read_only_paths": []
+        }
+      }
+    }
+  ],
+  "config": {
+    "max_concurrent_tasks": 3
+  }
+}

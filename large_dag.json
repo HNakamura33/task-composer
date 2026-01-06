@@ -1,0 +1,88 @@
+{
+  "tasks": [
+    {
+      "task_id": "root",
+      "name": "Root Task",
+      "description": "Starting point",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "Initialize",
+      "executor": "log",
+      "args": {},
+      "dependencies": [],
+      "role": { "role_id": "r", "name": "Role", "subagents": [], "skills": [], "description": "", "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": 10, "allowed_extensions": [] } }, "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] } }
+    },
+    {
+      "task_id": "a1",
+      "name": "Branch A-1",
+      "description": "Parallel task A1",
+      "priority": 2,
+      "status": "Pending",
+      "prompt": "Task A1",
+      "executor": "log",
+      "args": {},
+      "dependencies": ["root"],
+      "role": { "role_id": "r", "name": "Role", "subagents": [], "skills": [], "description": "", "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": 10, "allowed_extensions": [] } }, "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] } }
+    },
+    {
+      "task_id": "a2",
+      "name": "Branch A-2",
+      "description": "Parallel task A2",
+      "priority": 2,
+      "status": "Pending",
+      "prompt": "Task A2",
+      "executor": "log",
+      "args": {},
+      "dependencies": ["root"],
+      "role": { "role_id": "r", "name": "Role", "subagents": [], "skills": [], "description": "", "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": 10, "allowed_extensions": [] } }, "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] } }
+    },
+    {
+      "task_id": "a3",
+      "name": "Branch A-3",
+      "description": "Parallel task A3",
+      "priority": 2,
+      "status": "Pending",
+      "prompt": "Task A3",
+      "executor": "log",
+      "args": {},
+      "dependencies": ["root"],
+      "role": { "role_id": "r", "name": "Role", "subagents": [], "skills": [], "description": "", "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": 10, "allowed_extensions": [] } }, "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] } }
+    },
+    {
+      "task_id": "a4",
+      "name": "Branch A-4",
+      "description": "Parallel task A4",
+      "priority": 2,
+      "status": "Pending",
+      "prompt": "Task A4",
+      "executor": "log",
+      "args": {},
+      "dependencies": ["root"],
+      "role": { "role_id": "r", "name": "Role", "subagents": [], "skills": [], "description": "", "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": 10, "allowed_extensions": [] } }, "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] } }
+    },
+    {
+      "task_id": "a5",
+      "name": "Branch A-5",
+      "description": "Parallel task A5",
+      "priority": 2,
+      "status": "Pending",
+      "prompt": "Task A5",
+      "executor": "log",
+      "args": {},
+      "dependencies": ["root"],
+      "role": { "role_id": "r", "name": "Role", "subagents": [], "skills": [], "description": "", "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": 10, "allowed_extensions": [] } }, "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] } }
+    },
+    {
+      "task_id": "merge",
+      "name": "Merge All",
+      "description": "Merge all branches",
+      "priority": 3,
+      "status": "Pending",
+      "prompt": "Merge",
+      "executor": "log",
+      "args": {},
+      "dependencies": ["a1", "a2", "a3", "a4", "a5"],
+      "role": { "role_id": "r", "name": "Role", "subagents": [], "skills": [], "description": "", "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": 10, "allowed_extensions": [] } }, "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] } }
+    }
+  ]
+}

@@ -12,12 +12,14 @@
 //! ```
 
 pub mod log_executor;
+pub mod mcp_executor;
 
 use std::collections::HashMap;
 use crate::types::Task;
 use async_trait::async_trait;
 
 pub use log_executor::LogExecutor;
+pub use mcp_executor::{McpExecutor, ConnectionConfig};
 
 /// タスク実行の結果
 ///
