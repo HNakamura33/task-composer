@@ -9,7 +9,7 @@
 //! - [`BashPermission`] - Bashコマンド権限
 //! - [`WritePermission`] - ファイル書き込み権限
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// タスクを表す構造体
 ///
@@ -68,7 +68,7 @@ impl Default for Task {
 /// ロール（役割）を表す構造体
 ///
 /// タスクを実行するエージェントの役割と権限を定義します。
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct Role {
     /// ロールの一意な識別子
     pub role_id: String,
@@ -104,7 +104,7 @@ impl Default for Role {
 /// ファイルアクセス権限を表す構造体
 ///
 /// ファイルシステムへのアクセス制御を定義します。
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct FilePermission {
     /// 許可するパス（例: "${project_root}/src"）
     pub allowed_paths: Vec<String>,
@@ -128,7 +128,7 @@ impl Default for FilePermission {
 /// Bashコマンド実行権限を表す構造体
 ///
 /// シェルコマンドの実行制御を定義します。
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct BashPermission {
     /// 許可するコマンド（例: "git", "npm"）
     pub allowed_commands: Vec<String>,
@@ -152,7 +152,7 @@ impl Default for BashPermission {
 /// ファイル書き込み権限を表す構造体
 ///
 /// ファイル書き込み操作の制限を定義します。
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct WritePermission {
     /// 最大ファイルサイズ（MB）
     pub max_file_size_mb: Option<u32>,
@@ -173,7 +173,7 @@ impl Default for WritePermission {
 /// ツール実行権限を表す構造体
 ///
 /// 各ツールの実行権限をまとめて管理します。
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct ToolPermission {
     /// Bashコマンド権限
     pub bash: BashPermission,

@@ -386,15 +386,22 @@ impl DAG {
                     }
                 }
 
-                // inputsを解決してargsにマージ
+                // argsとinputsの参照を解決してマージ
                 let resolve_ctx = ResolveContext {
                     previous_results: &previous_results,
                     current_task: Some(&task),
                 };
+
+                // argsを解決（$.self.role等の参照を解決）
+                let resolved_args = resolve_inputs(&task.args, &resolve_ctx)
+                    .map_err(|e| format!("Failed to resolve args for task {}: {}", task.task_id, e))?;
+
+                // inputsを解決
                 let resolved_inputs = resolve_inputs(&task.inputs, &resolve_ctx)
                     .map_err(|e| format!("Failed to resolve inputs for task {}: {}", task.task_id, e))?;
 
-                let merged_args = merge_json_values(task.args.clone(), resolved_inputs);
+                // 解決済みのargsとinputsをマージ
+                let merged_args = merge_json_values(resolved_args, resolved_inputs);
 
                 let ctx = ExecutionContext {
                     args: merged_args,
