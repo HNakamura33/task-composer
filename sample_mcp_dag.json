@@ -204,6 +204,6 @@
     }
   ],
   "config": {
-    "max_concurrent_tasks": 3
+    "max_concurrent_tasks": 10
   }
 }
