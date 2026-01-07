@@ -21,40 +21,81 @@ DAGベースのタスク管理ライブラリ（Rust学習プロジェクト）
 
 ```
 task-composer/
-├── Cargo.toml          # 依存関係: serde, serde_json
+├── Cargo.toml              # 依存関係: serde, serde_json, tokio, async-trait, regex等
+├── LICENSE                 # Apache 2.0
 ├── src/
-│   └── main.rs         # メインコード（構造体、impl、テスト）
-├── sample_dag.json     # サンプルDAG定義ファイル
-└── CLAUDE.md           # このファイル
+│   ├── main.rs             # CLIエントリーポイント
+│   ├── types.rs            # 型定義（Task, Role, Config等）
+│   ├── path_resolver.rs    # パス参照・埋め込み参照の解決
+│   ├── dag/
+│   │   ├── mod.rs          # DAG実装（非同期実行含む）
+│   │   └── tests.rs        # DAGテスト
+│   ├── task_executor/
+│   │   ├── mod.rs          # Executorトレイト・レジストリ
+│   │   ├── log_executor.rs # ログ出力Executor
+│   │   └── mcp_executor.rs # MCP Executor
+│   └── conflict/
+│       ├── mod.rs          # 競合検出
+│       └── tests.rs
+├── mcp_servers/
+│   └── claude_code_mcp/
+│       ├── main.py         # FastMCPサーバー
+│       └── pyproject.toml
+├── sample_dag.json         # 基本サンプル
+├── sample_mcp_dag.json     # MCP連携サンプル
+├── sample_embedded_reference.json  # 埋め込み参照サンプル
+├── sample_mcp_with_role.json       # Role付きMCPサンプル
+└── CLAUDE.md               # このファイル
 ```
 
 ## 主要な構造体
 
-- `Task` - タスク情報（task_id, name, description, priority, status, prompt, role, dependencies）
-- `Role` - ロール情報（role_id, name, subagents, skills, description, permissions）
+- `Task` - タスク情報（task_id, name, description, priority, status, prompt, executor, args, inputs, role, dependencies）
+- `Role` - ロール情報（role_id, name, subagents, skills, description, tool_permissions, file_permissions）
+- `FilePermission` - ファイル権限（allowed_paths, denied_paths, read_only_paths）
+- `ToolPermission` - ツール権限（bash, write）
+- `BashPermission` - Bash権限（allowed_commands, blocked_commands, require_confirmation）
+- `WritePermission` - 書き込み権限（max_file_size_mb, allowed_extensions）
 - `Status` - タスク状態（Pending, InProgress, Completed）
-- `DAG` - グラフ本体（nodes: HashMap, edges: HashMap）
-- `DAGJson` - JSON読み込み用中間構造体
+- `DAG` - グラフ本体（nodes, edges, edges_rev, registry, config）
+- `Config` - 設定（max_concurrent_tasks）
+- `ExecutionResult` - 実行結果（task_id, success, output）
+- `ResolveContext` - パス解決コンテキスト（previous_results, current_task）
 
 ## 実装済み機能
 
+### DAG基本機能
 - `DAG::new()` - 空のDAG作成
 - `DAG::add_task()` - タスク追加
 - `DAG::add_edge()` - エッジ追加
 - `DAG::from_json()` - JSONからDAG作成
 - `DAG::get_dependencies()` - タスクの依存先取得
-- 各構造体の`Default`トレイト実装
+- `DAG::topological_sort()` - トポロジカルソート（Kahnアルゴリズム、循環検出含む）
+- `DAG::execute_async()` - 非同期並列実行
 
-## 開発中の機能
+### パス参照機能
+- `$.{task_id}.output.{field}` - 依存タスクの出力参照
+- `$.self.{field}` - 現在のタスクのフィールド参照
+- `${...}` - 文字列内への埋め込み参照
+- ネストしたフィールド、配列インデックス対応
 
-- `topological_sort()` - トポロジカルソート（循環検出含む）
+### Executor
+- `LogExecutor` - デバッグ・テスト用ログ出力
+- `McpExecutor` - MCP (Model Context Protocol) 連携
+- `ExecutorRegistry` - Executor管理
+
+### MCP Server (Python)
+- `claude_code_query` - Claude Codeへのクエリ実行
+- `options` - Claude Agent SDKオプション
+- `extra_options.role` - ロール情報をシステムプロンプトに変換
 
 ## コマンド
 
 ```bash
-cargo test      # テスト実行
-cargo run       # sample_dag.json を読み込んで実行
-cargo doc --open # ドキュメント生成
+cargo test              # テスト実行
+cargo run               # sample_dag.json を読み込んで実行
+cargo run -- file.json  # 指定したJSONを実行
+cargo doc --open        # ドキュメント生成
 ```
 
 ## コーディング規約
@@ -62,10 +103,14 @@ cargo doc --open # ドキュメント生成
 - ドキュメントコメント（`///`）を全ての公開関数・構造体に付ける
 - テストは同じファイル内の `#[cfg(test)] mod tests` に記述
 - エラーハンドリングは `Result<T, E>` を使用
+- 非同期関数には `async_trait` を使用
 
 ## 学習メモ
 
 - `&str` vs `String`: 関数引数は`&str`が柔軟
 - `Option<T>` vs `Result<T, E>`: 値の有無 vs 成功/失敗
 - セミコロンなし = 値を返す式
-- `#[derive(Deserialize)]` でJSONから自動変換
+- `#[derive(Deserialize, Serialize)]` でJSON変換
+- `async/await` と `tokio::spawn` で並列実行
+- `Arc<Mutex<T>>` で共有状態の管理
+- `regex::Regex` で文字列パターンマッチ
