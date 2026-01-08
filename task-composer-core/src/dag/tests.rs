@@ -183,7 +183,7 @@ fn test_from_json() {
 #[test]
 fn test_from_json_file() {
     // sample_dag.json を読み込むテスト
-    let json = std::fs::read_to_string("sample_dag.json").unwrap();
+    let json = std::fs::read_to_string("../sample_dag.json").unwrap();
     let dag = DAG::from_json(&json).unwrap();
 
     // 4つのタスクが読み込まれたことを確認
@@ -203,7 +203,7 @@ fn test_from_json_file() {
 
 #[test]
 fn test_get_dependencies() {
-    let json = std::fs::read_to_string("sample_dag.json").unwrap();
+    let json = std::fs::read_to_string("../sample_dag.json").unwrap();
     let dag = DAG::from_json(&json).unwrap();
 
     // Task 1 は Task 2, 3 への依存を持つ
@@ -221,7 +221,7 @@ fn test_get_dependencies() {
 
 #[test]
 fn test_topological_sort() {
-    let json = std::fs::read_to_string("sample_dag.json").unwrap();
+    let json = std::fs::read_to_string("../sample_dag.json").unwrap();
     let dag = DAG::from_json(&json).unwrap();
 
     let sorted = dag.topological_sort().unwrap();
@@ -278,7 +278,7 @@ fn test_topological_sort_cycle_detection() {
 
 #[test]
 fn test_compute_all_descendants() {
-    let json = std::fs::read_to_string("sample_dag.json").unwrap();
+    let json = std::fs::read_to_string("../sample_dag.json").unwrap();
     let dag = DAG::from_json(&json).unwrap();
 
     let descendants = dag.compute_all_descendants().unwrap();
@@ -397,7 +397,7 @@ fn test_compute_all_descendants_large_graph() {
 
 #[test]
 fn test_compute_all_ancestors() {
-    let json = std::fs::read_to_string("sample_dag.json").unwrap();
+    let json = std::fs::read_to_string("../sample_dag.json").unwrap();
     let dag = DAG::from_json(&json).unwrap();
 
     let ancestors = dag.compute_all_ancestors().unwrap();
@@ -491,7 +491,7 @@ fn test_compute_all_ancestors_large_graph() {
 fn test_get_all_parallel_pairs() {
     // sample_dag.json: 1 → 2 → 4, 1 → 3 → 4
     // 並行ペア: (2, 3) のみ
-    let json = std::fs::read_to_string("sample_dag.json").unwrap();
+    let json = std::fs::read_to_string("../sample_dag.json").unwrap();
     let dag = DAG::from_json(&json).unwrap();
 
     let pairs = dag.get_all_parallel_pairs().unwrap();

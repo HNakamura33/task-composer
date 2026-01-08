@@ -1,0 +1,174 @@
+{
+  "tasks": [
+    {
+      "task_id": "1",
+      "name": "",
+      "description": "Name is empty - should trigger error",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "This task has empty name",
+      "executor": "log",
+      "dependencies": [],
+      "role": { "role_id": "r1", "name": "Test", "subagents": [], "skills": [], "description": "", "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": null, "allowed_extensions": [] } }, "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] } },
+      "args": {},
+      "inputs": {}
+    },
+    {
+      "task_id": "2",
+      "name": "Missing Prompt",
+      "description": "Prompt is empty - should trigger warning",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "",
+      "executor": "log",
+      "dependencies": ["1"],
+      "role": { "role_id": "r2", "name": "Test", "subagents": [], "skills": [], "description": "", "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": null, "allowed_extensions": [] } }, "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] } },
+      "args": {},
+      "inputs": {}
+    },
+    {
+      "task_id": "3",
+      "name": "Unknown Executor",
+      "description": "Uses unknown executor - should trigger warning",
+      "priority": 2,
+      "status": "Pending",
+      "prompt": "Do something",
+      "executor": "unknown_executor",
+      "dependencies": ["1"],
+      "role": { "role_id": "r3", "name": "Test", "subagents": [], "skills": [], "description": "", "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": null, "allowed_extensions": [] } }, "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] } },
+      "args": {},
+      "inputs": {}
+    },
+    {
+      "task_id": "4",
+      "name": "Missing Dependency",
+      "description": "References non-existent task - should trigger error",
+      "priority": 2,
+      "status": "Pending",
+      "prompt": "This depends on missing task",
+      "executor": "log",
+      "dependencies": ["999"],
+      "role": { "role_id": "r4", "name": "Test", "subagents": [], "skills": [], "description": "", "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": null, "allowed_extensions": [] } }, "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] } },
+      "args": {},
+      "inputs": {}
+    },
+    {
+      "task_id": "5",
+      "name": "Self Dependency",
+      "description": "Depends on itself - should trigger error",
+      "priority": 2,
+      "status": "Pending",
+      "prompt": "I depend on myself",
+      "executor": "log",
+      "dependencies": ["5"],
+      "role": { "role_id": "r5", "name": "Test", "subagents": [], "skills": [], "description": "", "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": null, "allowed_extensions": [] } }, "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] } },
+      "args": {},
+      "inputs": {}
+    },
+    {
+      "task_id": "6",
+      "name": "Duplicate Dependencies",
+      "description": "Has duplicate dependency - should trigger warning",
+      "priority": 2,
+      "status": "Pending",
+      "prompt": "I have duplicate deps",
+      "executor": "mcp",
+      "dependencies": ["1", "1", "2"],
+      "role": { "role_id": "r6", "name": "Test", "subagents": [], "skills": [], "description": "", "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": null, "allowed_extensions": [] } }, "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] } },
+      "args": {},
+      "inputs": {}
+    },
+    {
+      "task_id": "7",
+      "name": "Cycle Start",
+      "description": "Part of a cycle with task 8",
+      "priority": 3,
+      "status": "Pending",
+      "prompt": "Cycle test",
+      "executor": "log",
+      "dependencies": ["8"],
+      "role": { "role_id": "r7", "name": "Test", "subagents": [], "skills": [], "description": "", "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": null, "allowed_extensions": [] } }, "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] } },
+      "args": {},
+      "inputs": {}
+    },
+    {
+      "task_id": "8",
+      "name": "Cycle End",
+      "description": "Part of a cycle with task 7",
+      "priority": 3,
+      "status": "Pending",
+      "prompt": "Cycle test",
+      "executor": "log",
+      "dependencies": ["7"],
+      "role": { "role_id": "r8", "name": "Test", "subagents": [], "skills": [], "description": "", "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": null, "allowed_extensions": [] } }, "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] } },
+      "args": {},
+      "inputs": {}
+    },
+    {
+      "task_id": "9",
+      "name": "Orphan Node",
+      "description": "No dependencies and no one depends on it",
+      "priority": 1,
+      "status": "Completed",
+      "prompt": "I am alone",
+      "executor": "log",
+      "dependencies": [],
+      "role": { "role_id": "r9", "name": "Test", "subagents": [], "skills": [], "description": "", "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": null, "allowed_extensions": [] } }, "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] } },
+      "args": {},
+      "inputs": {}
+    },
+    {
+      "task_id": "10",
+      "name": "FilePermission Conflict 1",
+      "description": "Same path in allowed and denied - Error",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "Test file permission",
+      "executor": "log",
+      "dependencies": ["1"],
+      "role": {
+        "role_id": "r10",
+        "name": "Conflict Test",
+        "subagents": [],
+        "skills": [],
+        "description": "",
+        "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": null, "allowed_extensions": [] } },
+        "file_permissions": {
+          "allowed_paths": ["/src", "/config"],
+          "denied_paths": ["/src", "/.env"],
+          "read_only_paths": []
+        }
+      },
+      "args": {},
+      "inputs": {}
+    },
+    {
+      "task_id": "11",
+      "name": "FilePermission Conflict 2",
+      "description": "Hierarchical overlap - Warning",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "Test file permission",
+      "executor": "log",
+      "dependencies": ["1"],
+      "role": {
+        "role_id": "r11",
+        "name": "Hierarchy Test",
+        "subagents": [],
+        "skills": [],
+        "description": "",
+        "tool_permissions": { "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] }, "write": { "max_file_size_mb": null, "allowed_extensions": [] } },
+        "file_permissions": {
+          "allowed_paths": ["/project/src"],
+          "denied_paths": ["/project"],
+          "read_only_paths": ["/project/src"]
+        }
+      },
+      "args": {},
+      "inputs": {}
+    }
+  ],
+  "config": {
+    "max_concurrent_tasks": 4
+  }
+}

@@ -33,6 +33,9 @@ use tokio::sync::mpsc;
 struct DAGJson {
     /// タスクのリスト
     tasks: Vec<Task>,
+    /// 設定（オプション）
+    #[serde(default)]
+    config: Config,
 }
 
 /// DAG（有向非巡回グラフ）を表す構造体
@@ -60,7 +63,7 @@ pub struct DAG {
 
     pub registry: Arc<ExecutorRegistry>,
 
-    config: Config,
+    pub config: Config,
 
 }
 
@@ -163,6 +166,7 @@ impl DAG {
     pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
         let dag_json: DAGJson = serde_json::from_str(json_str)?;
         let mut dag = DAG::new();
+        dag.config = dag_json.config;
 
         for task in dag_json.tasks {
             let dependencies = task.dependencies.clone();
