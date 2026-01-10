@@ -1,0 +1,113 @@
+{
+  "config": {
+    "max_concurrent_tasks": 4
+  },
+  "tasks": [
+    {
+      "task_id": "validate",
+      "name": "Validate Input",
+      "description": "入力データを検証し、結果を返す",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "入力データの検証を行います",
+      "executor": "log",
+      "args": {
+        "message": "Validating input data...",
+        "result": {
+          "ok": true,
+          "error_count": 0
+        }
+      },
+      "dependencies": [],
+      "role": {
+        "role_id": "validator",
+        "name": "Validator",
+        "subagents": [],
+        "skills": [],
+        "description": "入力検証を行うロール",
+        "tool_permissions": {
+          "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+          "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+        },
+        "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+      }
+    },
+    {
+      "task_id": "on_success",
+      "name": "Process on Success",
+      "description": "検証成功時の処理",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "検証が成功したので処理を続行します",
+      "executor": "log",
+      "args": {
+        "message": "Validation succeeded! Processing..."
+      },
+      "dependencies": ["validate"],
+      "if": "$.validate.output.task_id == \"validate\"",
+      "role": {
+        "role_id": "processor",
+        "name": "Processor",
+        "subagents": [],
+        "skills": [],
+        "description": "処理を行うロール",
+        "tool_permissions": {
+          "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+          "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+        },
+        "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+      }
+    },
+    {
+      "task_id": "on_failure",
+      "name": "Handle Failure",
+      "description": "検証失敗時のエラーハンドリング",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "検証が失敗したのでエラー処理を行います",
+      "executor": "log",
+      "args": {
+        "message": "Validation failed! Handling error..."
+      },
+      "dependencies": ["validate"],
+      "else": "$.validate.output.task_id == \"validate\"",
+      "role": {
+        "role_id": "error_handler",
+        "name": "Error Handler",
+        "subagents": [],
+        "skills": [],
+        "description": "エラー処理を行うロール",
+        "tool_permissions": {
+          "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+          "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+        },
+        "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+      }
+    },
+    {
+      "task_id": "finalize",
+      "name": "Finalize",
+      "description": "成功処理後の最終処理",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "最終処理を行います",
+      "executor": "log",
+      "args": {
+        "message": "Finalizing..."
+      },
+      "dependencies": ["on_success"],
+      "role": {
+        "role_id": "finalizer",
+        "name": "Finalizer",
+        "subagents": [],
+        "skills": [],
+        "description": "最終処理を行うロール",
+        "tool_permissions": {
+          "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+          "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+        },
+        "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+      }
+    }
+  ]
+}

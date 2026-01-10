@@ -161,6 +161,8 @@ mod tests {
             role: Default::default(),
             args: serde_json::Value::Null,
             inputs: serde_json::Value::Null,
+            if_condition: None,
+            else_condition: None,
         });
 
         // Task 2 depends on 1
@@ -176,6 +178,8 @@ mod tests {
             role: Default::default(),
             args: serde_json::Value::Null,
             inputs: serde_json::Value::Null,
+            if_condition: None,
+            else_condition: None,
         });
         dag.add_edge("1", "2");
 
@@ -192,6 +196,8 @@ mod tests {
             role: Default::default(),
             args: serde_json::Value::Null,
             inputs: serde_json::Value::Null,
+            if_condition: None,
+            else_condition: None,
         });
         dag.add_edge("1", "3");
 
@@ -208,6 +214,8 @@ mod tests {
             role: Default::default(),
             args: serde_json::Value::Null,
             inputs: serde_json::Value::Null,
+            if_condition: None,
+            else_condition: None,
         });
         dag.add_edge("2", "4");
         dag.add_edge("3", "4");

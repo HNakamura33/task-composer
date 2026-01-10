@@ -97,6 +97,8 @@ impl From<&UiTask> for Task {
             role: ui_task.role.clone(),
             inputs: ui_task.inputs.clone(),
             args: ui_task.args.clone(),
+            if_condition: None,
+            else_condition: None,
         }
     }
 }

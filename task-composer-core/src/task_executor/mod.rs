@@ -21,21 +21,34 @@ use async_trait::async_trait;
 pub use log_executor::LogExecutor;
 pub use mcp_executor::{McpExecutor, ConnectionConfig};
 
+/// タスク実行のステータス
+///
+/// タスクの実行結果を表す列挙型です。
+#[derive(Clone, Debug, PartialEq)]
+pub enum ExecutionStatus {
+    /// 実行成功
+    Success,
+    /// 実行失敗
+    Failed,
+    /// 条件によりスキップされた
+    Skipped,
+}
+
 /// タスク実行の結果
 ///
 /// Executorがタスクを実行した結果を格納します。
-/// 成功/失敗のステータスと、出力データを含みます。
+/// ステータスと出力データを含みます。
 ///
 /// # Fields
 /// - `task_id`: 実行されたタスクのID
-/// - `success`: 実行が成功したかどうか
+/// - `status`: 実行ステータス（成功/失敗/スキップ）
 /// - `output`: 実行結果のJSON出力（次のタスクの`inputs`から参照可能）
 #[derive(Clone, Debug)]
 pub struct ExecutionResult {
     /// 実行されたタスクのID
     pub task_id: String,
-    /// 実行が成功したかどうか
-    pub success: bool,
+    /// 実行ステータス
+    pub status: ExecutionStatus,
     /// 実行結果の出力データ（JSON形式）
     ///
     /// 他のタスクから`$.{task_id}.output.{field}`の形式で参照できます。
@@ -202,13 +215,21 @@ mod tests {
     fn test_execution_result_clone() {
         let result = ExecutionResult {
             task_id: "test".to_string(),
-            success: true,
+            status: ExecutionStatus::Success,
             output: serde_json::json!({"key": "value"}),
         };
         let cloned = result.clone();
         assert_eq!(cloned.task_id, "test");
-        assert!(cloned.success);
+        assert_eq!(cloned.status, ExecutionStatus::Success);
         assert_eq!(cloned.output["key"], "value");
+    }
+
+    #[test]
+    fn test_execution_status_variants() {
+        assert_eq!(ExecutionStatus::Success, ExecutionStatus::Success);
+        assert_eq!(ExecutionStatus::Failed, ExecutionStatus::Failed);
+        assert_eq!(ExecutionStatus::Skipped, ExecutionStatus::Skipped);
+        assert_ne!(ExecutionStatus::Success, ExecutionStatus::Failed);
     }
 
     #[test]

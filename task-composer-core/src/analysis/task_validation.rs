@@ -236,6 +236,8 @@ mod tests {
             role: Default::default(),
             args: serde_json::Value::Null,
             inputs: serde_json::Value::Null,
+            if_condition: None,
+            else_condition: None,
         }
     }
 
