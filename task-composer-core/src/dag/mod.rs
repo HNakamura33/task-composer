@@ -372,9 +372,10 @@ impl DAG {
         }
         
         let results: Arc<Mutex<HashMap<String, ExecutionResult>>> = Arc::new(Mutex::new(HashMap::new()));
-        let (tx, mut rx) = mpsc::channel::<(String, ExecutionResult)>(100);
+        let (tx, mut rx) = mpsc::channel::<(String, Result<ExecutionResult, String>)>(100);
 
         let mut running_tasks = 0;
+        let mut failed_count: usize = 0;
 
         loop {
             while running_tasks < self.config.max_concurrent_tasks {
@@ -415,9 +416,25 @@ impl DAG {
                 let registry = Arc::clone(&self.registry);
 
                 tokio::spawn(async move {
-                    let executor = registry.get(&task.executor).unwrap();
+                    let executor = match registry.get(&task.executor) {
+                        Some(exec) => exec,
+                        None => {
+                            let error = format!("Executor not found: {}", task.executor);
+                            eprintln!("Task {} failed: {}", task_id, error);
+                            let _ = tx.send((task_id, Err(error))).await;
+                            return;
+                        }
+                    };
                     let result = executor.execute_task(&task, &ctx).await;
-                    tx.send((task_id, result.unwrap())).await.unwrap();
+                    match result {
+                        Ok(exec_result) => {
+                            let _ = tx.send((task_id, Ok(exec_result))).await;
+                        }
+                        Err(e) => {
+                            eprintln!("Task {} failed: {}", task_id, e);
+                            let _ = tx.send((task_id, Err(e))).await;
+                        }
+                    }
                 });
                 // Note: この行はspawn直後に実行される（タスク完了を待たない）
                 running_tasks += 1;
@@ -430,14 +447,23 @@ impl DAG {
             
             if let Some((task_id, result)) = rx.recv().await {
                 running_tasks -= 1;
-                results.lock().unwrap().insert(task_id.clone(), result);
-                
-                if let Some(to_list) = self.edges.get(&task_id) {
-                    for to in to_list {
-                        *in_degree.get_mut(to).unwrap() -= 1;
-                        if in_degree[to] == 0 {
-                            queue.push(to.clone());
+
+                match result {
+                    Ok(exec_result) => {
+                        results.lock().unwrap().insert(task_id.clone(), exec_result);
+
+                        if let Some(to_list) = self.edges.get(&task_id) {
+                            for to in to_list {
+                                *in_degree.get_mut(to).unwrap() -= 1;
+                                if in_degree[to] == 0 {
+                                    queue.push(to.clone());
+                                }
+                            }
                         }
+                    }
+                    Err(e) => {
+                        eprintln!("Task {} failed: {}", task_id, e);
+                        failed_count += 1;
                     }
                 }
             }
@@ -446,8 +472,14 @@ impl DAG {
         }
 
 
-        if results.lock().unwrap().len() != self.nodes.len() {
-            Err("Graph has at least one cycle".to_string())
+        let success_count = results.lock().unwrap().len();
+        let skipped_count = self.nodes.len() - success_count - failed_count;
+
+        if failed_count > 0 || skipped_count > 0 {
+            Err(format!(
+                "{} task(s) failed, {} task(s) skipped",
+                failed_count, skipped_count
+            ))
         } else {
             Ok(results.lock().unwrap().clone())
         }
