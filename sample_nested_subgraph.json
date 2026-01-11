@@ -1,0 +1,208 @@
+{
+  "tasks": [
+    {
+      "task_id": "start",
+      "name": "Start",
+      "description": "Start the nested pipeline",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "Starting...",
+      "executor": "log",
+      "args": {},
+      "dependencies": [],
+      "role": {
+        "role_id": "role_default",
+        "name": "Default Role",
+        "subagents": [],
+        "skills": [],
+        "description": "",
+        "tool_permissions": {
+          "bash": {"allowed_commands": [], "blocked_commands": [], "require_confirmation": []},
+          "write": {"max_file_size_mb": 10, "allowed_extensions": []}
+        },
+        "file_permissions": {"allowed_paths": [], "denied_paths": [], "read_only_paths": []}
+      }
+    },
+    {
+      "task_id": "outer_dag",
+      "name": "Outer DAG",
+      "description": "Outer sub-graph containing another sub-graph",
+      "priority": 2,
+      "status": "Pending",
+      "prompt": "Running outer DAG",
+      "executor": "dag",
+      "args": {
+        "dag": {
+          "tasks": [
+            {
+              "task_id": "outer_task1",
+              "name": "Outer Task 1",
+              "description": "First task in outer DAG",
+              "priority": 1,
+              "status": "Pending",
+              "prompt": "Outer task 1",
+              "executor": "log",
+              "args": {"level": "outer"},
+              "dependencies": [],
+              "role": {
+                "role_id": "role_outer",
+                "name": "Outer Role",
+                "subagents": [],
+                "skills": [],
+                "description": "",
+                "tool_permissions": {
+                  "bash": {"allowed_commands": [], "blocked_commands": [], "require_confirmation": []},
+                  "write": {"max_file_size_mb": 10, "allowed_extensions": []}
+                },
+                "file_permissions": {"allowed_paths": [], "denied_paths": [], "read_only_paths": []}
+              }
+            },
+            {
+              "task_id": "inner_dag",
+              "name": "Inner DAG",
+              "description": "Nested sub-graph inside outer DAG",
+              "priority": 2,
+              "status": "Pending",
+              "prompt": "Running inner DAG",
+              "executor": "dag",
+              "args": {
+                "dag": {
+                  "tasks": [
+                    {
+                      "task_id": "inner_task1",
+                      "name": "Inner Task 1",
+                      "description": "Task in inner DAG",
+                      "priority": 1,
+                      "status": "Pending",
+                      "prompt": "Inner task 1",
+                      "executor": "log",
+                      "args": {"level": "inner"},
+                      "dependencies": [],
+                      "role": {
+                        "role_id": "role_inner",
+                        "name": "Inner Role",
+                        "subagents": [],
+                        "skills": [],
+                        "description": "",
+                        "tool_permissions": {
+                          "bash": {"allowed_commands": [], "blocked_commands": [], "require_confirmation": []},
+                          "write": {"max_file_size_mb": 10, "allowed_extensions": []}
+                        },
+                        "file_permissions": {"allowed_paths": [], "denied_paths": [], "read_only_paths": []}
+                      }
+                    },
+                    {
+                      "task_id": "inner_task2",
+                      "name": "Inner Task 2",
+                      "description": "Second task in inner DAG",
+                      "priority": 2,
+                      "status": "Pending",
+                      "prompt": "Inner task 2",
+                      "executor": "log",
+                      "args": {"level": "inner"},
+                      "inputs": {},
+                      "dependencies": ["inner_task1"],
+                      "role": {
+                        "role_id": "role_inner",
+                        "name": "Inner Role",
+                        "subagents": [],
+                        "skills": [],
+                        "description": "",
+                        "tool_permissions": {
+                          "bash": {"allowed_commands": [], "blocked_commands": [], "require_confirmation": []},
+                          "write": {"max_file_size_mb": 10, "allowed_extensions": []}
+                        },
+                        "file_permissions": {"allowed_paths": [], "denied_paths": [], "read_only_paths": []}
+                      }
+                    }
+                  ],
+                  "config": {"max_concurrent_tasks": 1}
+                }
+              },
+              "dependencies": ["outer_task1"],
+              "role": {
+                "role_id": "role_outer",
+                "name": "Outer Role",
+                "subagents": [],
+                "skills": [],
+                "description": "",
+                "tool_permissions": {
+                  "bash": {"allowed_commands": [], "blocked_commands": [], "require_confirmation": []},
+                  "write": {"max_file_size_mb": 10, "allowed_extensions": []}
+                },
+                "file_permissions": {"allowed_paths": [], "denied_paths": [], "read_only_paths": []}
+              }
+            },
+            {
+              "task_id": "outer_task2",
+              "name": "Outer Task 2",
+              "description": "Final task in outer DAG",
+              "priority": 3,
+              "status": "Pending",
+              "prompt": "Outer task 2",
+              "executor": "log",
+              "args": {"level": "outer"},
+              "inputs": {},
+              "dependencies": ["inner_dag"],
+              "role": {
+                "role_id": "role_outer",
+                "name": "Outer Role",
+                "subagents": [],
+                "skills": [],
+                "description": "",
+                "tool_permissions": {
+                  "bash": {"allowed_commands": [], "blocked_commands": [], "require_confirmation": []},
+                  "write": {"max_file_size_mb": 10, "allowed_extensions": []}
+                },
+                "file_permissions": {"allowed_paths": [], "denied_paths": [], "read_only_paths": []}
+              }
+            }
+          ],
+          "config": {"max_concurrent_tasks": 1}
+        }
+      },
+      "dependencies": ["start"],
+      "role": {
+        "role_id": "role_default",
+        "name": "Default Role",
+        "subagents": [],
+        "skills": [],
+        "description": "",
+        "tool_permissions": {
+          "bash": {"allowed_commands": [], "blocked_commands": [], "require_confirmation": []},
+          "write": {"max_file_size_mb": 10, "allowed_extensions": []}
+        },
+        "file_permissions": {"allowed_paths": [], "denied_paths": [], "read_only_paths": []}
+      }
+    },
+    {
+      "task_id": "end",
+      "name": "End",
+      "description": "End the nested pipeline",
+      "priority": 3,
+      "status": "Pending",
+      "prompt": "Ending...",
+      "executor": "log",
+      "args": {},
+      "inputs": {
+        "outer_task1_id": "$.outer_dag.output.outer_task1.output.task_id",
+        "inner_task2_id": "$.outer_dag.output.inner_dag.output.inner_task2.output.task_id",
+        "inner_task2_status": "$.outer_dag.output.inner_dag.output.inner_task2.status"
+      },
+      "dependencies": ["outer_dag"],
+      "role": {
+        "role_id": "role_default",
+        "name": "Default Role",
+        "subagents": [],
+        "skills": [],
+        "description": "",
+        "tool_permissions": {
+          "bash": {"allowed_commands": [], "blocked_commands": [], "require_confirmation": []},
+          "write": {"max_file_size_mb": 10, "allowed_extensions": []}
+        },
+        "file_permissions": {"allowed_paths": [], "denied_paths": [], "read_only_paths": []}
+      }
+    }
+  ],
+  "config": {"max_concurrent_tasks": 1}
+}

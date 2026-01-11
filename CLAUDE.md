@@ -46,6 +46,8 @@ task-composer/
 ├── sample_embedded_reference.json  # 埋め込み参照サンプル
 ├── sample_mcp_with_role.json       # Role付きMCPサンプル
 ├── sample_if_else.json     # if/else条件付き実行サンプル
+├── sample_subgraph.json    # サブグラフ実行サンプル
+├── sample_nested_subgraph.json  # ネストしたサブグラフサンプル
 └── CLAUDE.md               # このファイル
 ```
 
@@ -90,7 +92,14 @@ task-composer/
 ### Executor
 - `LogExecutor` - デバッグ・テスト用ログ出力
 - `McpExecutor` - MCP (Model Context Protocol) 連携
+- `DagExecutor` - サブグラフ（入れ子DAG）実行
 - `ExecutorRegistry` - Executor管理
+
+### サブグラフ実行
+- `args.dag` でサブDAG定義を指定
+- ネストしたサブグラフのサポート（最大3レベル）
+- サブグラフ内でのパス参照（`$.{task_id}.output.{field}`）
+- 親DAGからサブグラフ結果を参照（`$.{subdag_task}.output.{inner_task}.output.{field}`）
 
 ### MCP Server (Python)
 - `claude_code_query` - Claude Codeへのクエリ実行

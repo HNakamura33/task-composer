@@ -109,6 +109,16 @@ impl DAG {
             .register(executor);
     }
 
+    /// ExecutorRegistryを設定する
+    ///
+    /// サブグラフ実行時など、既存のregistryを共有したい場合に使用します。
+    ///
+    /// # Arguments
+    /// * `registry` - 設定するExecutorRegistry
+    pub fn set_registry(&mut self, registry: Arc<ExecutorRegistry>) {
+        self.registry = registry;
+    }
+
     /// タスクをDAGに追加する
     ///
     /// # Arguments

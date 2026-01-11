@@ -3,7 +3,8 @@
 use clap::{Parser, Subcommand};
 use task_composer_core::dag::DAG;
 use task_composer_core::analysis::StaticAnalyzer;
-use task_composer_core::task_executor::{LogExecutor, McpExecutor, ExecutionStatus};
+use std::sync::Arc;
+use task_composer_core::task_executor::{LogExecutor, McpExecutor, DagExecutor, ExecutionStatus};
 
 #[derive(Parser)]
 #[command(name = "task-composer")]
@@ -181,11 +182,27 @@ fn load_dag(file: &str) -> Result<DAG, String> {
         .map_err(|e| format!("Failed to parse JSON: {}", e))
 }
 
+/// ネストしたサブグラフ用のregistryを再帰的に作成
+///
+/// # Arguments
+/// * `depth` - 残りのネスト深度（0になるとDagExecutorを含まない）
+fn create_registry_with_depth(depth: usize) -> Arc<task_composer_core::task_executor::ExecutorRegistry> {
+    let mut registry = task_composer_core::task_executor::ExecutorRegistry::new();
+    registry.register(Box::new(LogExecutor::new()));
+    registry.register(Box::new(McpExecutor::new()));
+    if depth > 0 {
+        let sub_registry = create_registry_with_depth(depth - 1);
+        registry.register(Box::new(DagExecutor::new(sub_registry)));
+    }
+    Arc::new(registry)
+}
+
 /// DAGを実行
 async fn execute_dag(dag: &mut DAG) {
-    // Executorを登録
-    dag.register_executor(Box::new(LogExecutor::new()));
-    dag.register_executor(Box::new(McpExecutor::new()));
+    // 最大3レベルのネストをサポート
+    const MAX_SUBGRAPH_DEPTH: usize = 3;
+    let registry = create_registry_with_depth(MAX_SUBGRAPH_DEPTH);
+    dag.set_registry(registry);
 
     let start = std::time::Instant::now();
     match dag.execute_async().await {

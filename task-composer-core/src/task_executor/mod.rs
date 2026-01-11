@@ -11,6 +11,7 @@
 //! registry.register(Box::new(LogExecutor::new()));
 //! ```
 
+pub mod dag_executor;
 pub mod log_executor;
 pub mod mcp_executor;
 
@@ -18,13 +19,14 @@ use std::collections::HashMap;
 use crate::types::Task;
 use async_trait::async_trait;
 
+pub use dag_executor::DagExecutor;
 pub use log_executor::LogExecutor;
 pub use mcp_executor::{McpExecutor, ConnectionConfig};
 
 /// タスク実行のステータス
 ///
 /// タスクの実行結果を表す列挙型です。
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub enum ExecutionStatus {
     /// 実行成功
     Success,
@@ -43,7 +45,7 @@ pub enum ExecutionStatus {
 /// - `task_id`: 実行されたタスクのID
 /// - `status`: 実行ステータス（成功/失敗/スキップ）
 /// - `output`: 実行結果のJSON出力（次のタスクの`inputs`から参照可能）
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct ExecutionResult {
     /// 実行されたタスクのID
     pub task_id: String,

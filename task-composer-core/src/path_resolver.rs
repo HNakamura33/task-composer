@@ -89,8 +89,15 @@ pub fn resolve_inputs(
         serde_json::Value::String(s) => resolve_string_value(s, ctx),
         serde_json::Value::Object(map) => {
             let mut resolved = serde_json::Map::new();
+            // サブDAG定義内のパス参照は解決しない（サブDAG実行時に解決される）
+            const SKIP_KEYS: &[&str] = &["dag"];
             for (key, value) in map {
-                resolved.insert(key.clone(), resolve_inputs(value, ctx)?);
+                let resolved_value = if SKIP_KEYS.contains(&key.as_str()) {
+                    value.clone()
+                } else {
+                    resolve_inputs(value, ctx)?
+                };
+                resolved.insert(key.clone(), resolved_value);
             }
             Ok(serde_json::Value::Object(resolved))
         }
