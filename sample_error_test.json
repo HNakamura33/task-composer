@@ -1,0 +1,122 @@
+{
+  "tasks": [
+    {
+      "task_id": "A",
+      "name": "Task A (Success)",
+      "description": "This task will succeed",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "Normal task",
+      "executor": "log",
+      "args": {},
+      "dependencies": [],
+      "role": {
+        "role_id": "role_a",
+        "name": "Role A",
+        "subagents": [],
+        "skills": [],
+        "description": "Test role",
+        "tool_permissions": {
+          "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+          "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+        },
+        "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+      }
+    },
+    {
+      "task_id": "B",
+      "name": "Task B (Error)",
+      "description": "This task will fail - unknown executor",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "This will cause panic",
+      "executor": "unknown_executor",
+      "args": {},
+      "dependencies": [],
+      "role": {
+        "role_id": "role_b",
+        "name": "Role B",
+        "subagents": [],
+        "skills": [],
+        "description": "Test role",
+        "tool_permissions": {
+          "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+          "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+        },
+        "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+      }
+    },
+    {
+      "task_id": "C",
+      "name": "Task C (Depends on A)",
+      "description": "Should execute after A succeeds",
+      "priority": 2,
+      "status": "Pending",
+      "prompt": "Depends on A",
+      "executor": "log",
+      "args": {},
+      "dependencies": ["A"],
+      "role": {
+        "role_id": "role_c",
+        "name": "Role C",
+        "subagents": [],
+        "skills": [],
+        "description": "Test role",
+        "tool_permissions": {
+          "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+          "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+        },
+        "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+      }
+    },
+    {
+      "task_id": "D",
+      "name": "Task D (Depends on B)",
+      "description": "Should be skipped because B fails",
+      "priority": 2,
+      "status": "Pending",
+      "prompt": "Depends on B",
+      "executor": "log",
+      "args": {},
+      "dependencies": ["B"],
+      "role": {
+        "role_id": "role_d",
+        "name": "Role D",
+        "subagents": [],
+        "skills": [],
+        "description": "Test role",
+        "tool_permissions": {
+          "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+          "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+        },
+        "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+      }
+    },
+    {
+      "task_id": "E",
+      "name": "Task E (Independent - runs after B fails)",
+      "description": "Should execute even after B fails - no dependency on B",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "Independent task",
+      "executor": "log",
+      "args": {},
+      "dependencies": [],
+      "role": {
+        "role_id": "role_e",
+        "name": "Role E",
+        "subagents": [],
+        "skills": [],
+        "description": "Test role",
+        "tool_permissions": {
+          "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+          "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+        },
+        "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+      }
+    }
+  ],
+  "config": {
+    "max_concurrent_tasks": 1
+  }
+}

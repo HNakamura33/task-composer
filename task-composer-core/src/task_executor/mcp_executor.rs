@@ -3,7 +3,7 @@
 //! MCP サーバーにstdioトランスポートで接続し、ツールを呼び出します。
 //! 参考: https://github.com/HNakamura33/claude-code-expriment
 
-use super::{ExecutionContext, ExecutionResult, TaskExecutor};
+use super::{ExecutionContext, ExecutionResult, ExecutionStatus, TaskExecutor};
 use crate::types::Task;
 use async_trait::async_trait;
 use rmcp::{
@@ -266,12 +266,14 @@ impl TaskExecutor for McpExecutor {
 
         println!("  [MCP Task {} completed]", task.task_id);
 
+        let is_error = output
+            .get("is_error")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
         Ok(ExecutionResult {
             task_id: task.task_id.clone(),
-            success: !output
-                .get("is_error")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false),
+            status: if is_error { ExecutionStatus::Failed } else { ExecutionStatus::Success },
             output,
         })
     }

@@ -20,8 +20,8 @@
 use std::collections::{HashMap, HashSet};
 use serde::Deserialize;
 use crate::types::{Task, Config};
-use crate::task_executor::{ExecutionContext, ExecutorRegistry, TaskExecutor, ExecutionResult};
-use crate::path_resolver::{resolve_inputs, ResolveContext};
+use crate::task_executor::{ExecutionContext, ExecutorRegistry, TaskExecutor, ExecutionResult, ExecutionStatus};
+use crate::path_resolver::{resolve_inputs, evaluate_condition, ResolveContext};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
@@ -33,6 +33,9 @@ use tokio::sync::mpsc;
 struct DAGJson {
     /// タスクのリスト
     tasks: Vec<Task>,
+    /// 設定（オプション）
+    #[serde(default)]
+    config: Config,
 }
 
 /// DAG（有向非巡回グラフ）を表す構造体
@@ -60,7 +63,7 @@ pub struct DAG {
 
     pub registry: Arc<ExecutorRegistry>,
 
-    config: Config,
+    pub config: Config,
 
 }
 
@@ -104,6 +107,16 @@ impl DAG {
         Arc::get_mut(&mut self.registry)
             .expect("Cannot register executor: registry is already shared")
             .register(executor);
+    }
+
+    /// ExecutorRegistryを設定する
+    ///
+    /// サブグラフ実行時など、既存のregistryを共有したい場合に使用します。
+    ///
+    /// # Arguments
+    /// * `registry` - 設定するExecutorRegistry
+    pub fn set_registry(&mut self, registry: Arc<ExecutorRegistry>) {
+        self.registry = registry;
     }
 
     /// タスクをDAGに追加する
@@ -163,6 +176,7 @@ impl DAG {
     pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
         let dag_json: DAGJson = serde_json::from_str(json_str)?;
         let mut dag = DAG::new();
+        dag.config = dag_json.config;
 
         for task in dag_json.tasks {
             let dependencies = task.dependencies.clone();
@@ -368,9 +382,10 @@ impl DAG {
         }
         
         let results: Arc<Mutex<HashMap<String, ExecutionResult>>> = Arc::new(Mutex::new(HashMap::new()));
-        let (tx, mut rx) = mpsc::channel::<(String, ExecutionResult)>(100);
+        let (tx, mut rx) = mpsc::channel::<(String, Result<ExecutionResult, String>)>(100);
 
         let mut running_tasks = 0;
+        let mut failed_count: usize = 0;
 
         loop {
             while running_tasks < self.config.max_concurrent_tasks {
@@ -386,11 +401,63 @@ impl DAG {
                     }
                 }
 
+                // スキップ判定: 依存先がスキップされていたらこのタスクもスキップ
+                let dependency_skipped = task.dependencies.iter().any(|dep_id| {
+                    previous_results.get(dep_id)
+                        .map(|r| r.status == ExecutionStatus::Skipped)
+                        .unwrap_or(false)
+                });
+
+                if dependency_skipped {
+                    println!("  [Task {} skipped due to dependency skip]", task_id);
+                    let skip_result = ExecutionResult {
+                        task_id: task_id.clone(),
+                        status: ExecutionStatus::Skipped,
+                        output: serde_json::json!({"reason": "dependency_skipped"}),
+                    };
+                    results.lock().unwrap().insert(task_id.clone(), skip_result);
+
+                    // 後続タスクの入次数を更新
+                    if let Some(to_list) = self.edges.get(&task_id) {
+                        for to in to_list {
+                            *in_degree.get_mut(to).unwrap() -= 1;
+                            if in_degree[to] == 0 {
+                                queue.push(to.clone());
+                            }
+                        }
+                    }
+                    continue;
+                }
+
                 // argsとinputsの参照を解決してマージ
                 let resolve_ctx = ResolveContext {
                     previous_results: &previous_results,
                     current_task: Some(&task),
                 };
+
+                // if/else条件の評価
+                let should_skip = self.evaluate_skip_condition(&task, &resolve_ctx)?;
+
+                if should_skip {
+                    println!("  [Task {} skipped due to condition]", task_id);
+                    let skip_result = ExecutionResult {
+                        task_id: task_id.clone(),
+                        status: ExecutionStatus::Skipped,
+                        output: serde_json::json!({"reason": "condition_not_met"}),
+                    };
+                    results.lock().unwrap().insert(task_id.clone(), skip_result);
+
+                    // 後続タスクの入次数を更新
+                    if let Some(to_list) = self.edges.get(&task_id) {
+                        for to in to_list {
+                            *in_degree.get_mut(to).unwrap() -= 1;
+                            if in_degree[to] == 0 {
+                                queue.push(to.clone());
+                            }
+                        }
+                    }
+                    continue;
+                }
 
                 // argsを解決（$.self.role等の参照を解決）
                 let resolved_args = resolve_inputs(&task.args, &resolve_ctx)
@@ -411,9 +478,25 @@ impl DAG {
                 let registry = Arc::clone(&self.registry);
 
                 tokio::spawn(async move {
-                    let executor = registry.get(&task.executor).unwrap();
+                    let executor = match registry.get(&task.executor) {
+                        Some(exec) => exec,
+                        None => {
+                            let error = format!("Executor not found: {}", task.executor);
+                            eprintln!("Task {} failed: {}", task_id, error);
+                            let _ = tx.send((task_id, Err(error))).await;
+                            return;
+                        }
+                    };
                     let result = executor.execute_task(&task, &ctx).await;
-                    tx.send((task_id, result.unwrap())).await.unwrap();
+                    match result {
+                        Ok(exec_result) => {
+                            let _ = tx.send((task_id, Ok(exec_result))).await;
+                        }
+                        Err(e) => {
+                            eprintln!("Task {} failed: {}", task_id, e);
+                            let _ = tx.send((task_id, Err(e))).await;
+                        }
+                    }
                 });
                 // Note: この行はspawn直後に実行される（タスク完了を待たない）
                 running_tasks += 1;
@@ -426,14 +509,23 @@ impl DAG {
             
             if let Some((task_id, result)) = rx.recv().await {
                 running_tasks -= 1;
-                results.lock().unwrap().insert(task_id.clone(), result);
-                
-                if let Some(to_list) = self.edges.get(&task_id) {
-                    for to in to_list {
-                        *in_degree.get_mut(to).unwrap() -= 1;
-                        if in_degree[to] == 0 {
-                            queue.push(to.clone());
+
+                match result {
+                    Ok(exec_result) => {
+                        results.lock().unwrap().insert(task_id.clone(), exec_result);
+
+                        if let Some(to_list) = self.edges.get(&task_id) {
+                            for to in to_list {
+                                *in_degree.get_mut(to).unwrap() -= 1;
+                                if in_degree[to] == 0 {
+                                    queue.push(to.clone());
+                                }
+                            }
                         }
+                    }
+                    Err(e) => {
+                        eprintln!("Task {} failed: {}", task_id, e);
+                        failed_count += 1;
                     }
                 }
             }
@@ -442,15 +534,63 @@ impl DAG {
         }
 
 
-        if results.lock().unwrap().len() != self.nodes.len() {
-            Err("Graph has at least one cycle".to_string())
+        let results_map = results.lock().unwrap().clone();
+        let success_count = results_map.values()
+            .filter(|r| r.status == ExecutionStatus::Success)
+            .count();
+        let skipped_count = results_map.values()
+            .filter(|r| r.status == ExecutionStatus::Skipped)
+            .count();
+
+        // failedはresultsに含まれないので、ノード総数から差し引く
+        let actual_failed = self.nodes.len() - results_map.len();
+
+        if actual_failed > 0 || failed_count > 0 {
+            Err(format!(
+                "{} task(s) failed, {} task(s) skipped",
+                failed_count + actual_failed, skipped_count
+            ))
         } else {
-            Ok(results.lock().unwrap().clone())
+            println!("  [Execution complete: {} succeeded, {} skipped]", success_count, skipped_count);
+            Ok(results_map)
         }
-        
+
     }
 
+    /// if/else条件を評価してスキップするかどうかを判定する
+    ///
+    /// # 実行ルール
+    /// | フィールド | 条件結果 | タスク実行 |
+    /// |-----------|---------|-----------|
+    /// | なし | - | 実行 |
+    /// | `if` | true | 実行 |
+    /// | `if` | false | スキップ |
+    /// | `else` | true | スキップ |
+    /// | `else` | false | 実行 |
+    fn evaluate_skip_condition(
+        &self,
+        task: &Task,
+        ctx: &ResolveContext,
+    ) -> Result<bool, String> {
+        // if条件がある場合
+        if let Some(ref if_cond) = task.if_condition {
+            let result = evaluate_condition(if_cond, ctx)
+                .map_err(|e| format!("Failed to evaluate if condition for task {}: {}", task.task_id, e))?;
+            // ifがfalseならスキップ
+            return Ok(!result);
+        }
 
+        // else条件がある場合
+        if let Some(ref else_cond) = task.else_condition {
+            let result = evaluate_condition(else_cond, ctx)
+                .map_err(|e| format!("Failed to evaluate else condition for task {}: {}", task.task_id, e))?;
+            // elseがtrueならスキップ
+            return Ok(result);
+        }
+
+        // 条件なし → 実行する（スキップしない）
+        Ok(false)
+    }
 
     /// 入次数が0のノード（ルートノード）をキューに追加する
     ///

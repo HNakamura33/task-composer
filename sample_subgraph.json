@@ -1,0 +1,163 @@
+{
+  "tasks": [
+    {
+      "task_id": "init",
+      "name": "Initialize",
+      "description": "Initialize the pipeline",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "Initialize the data pipeline",
+      "executor": "log",
+      "args": {"stage": "init"},
+      "dependencies": [],
+      "role": {
+        "role_id": "role_init",
+        "name": "Init Role",
+        "subagents": [],
+        "skills": [],
+        "description": "Initialization role",
+        "tool_permissions": {
+          "bash": {"allowed_commands": [], "blocked_commands": [], "require_confirmation": []},
+          "write": {"max_file_size_mb": 10, "allowed_extensions": []}
+        },
+        "file_permissions": {"allowed_paths": [], "denied_paths": [], "read_only_paths": []}
+      }
+    },
+    {
+      "task_id": "data_pipeline",
+      "name": "Data Pipeline",
+      "description": "Execute ETL sub-graph",
+      "priority": 2,
+      "status": "Pending",
+      "prompt": "Run the ETL pipeline",
+      "executor": "dag",
+      "args": {
+        "dag": {
+          "tasks": [
+            {
+              "task_id": "extract",
+              "name": "Extract",
+              "description": "Extract data from source",
+              "priority": 1,
+              "status": "Pending",
+              "prompt": "Extracting data...",
+              "executor": "log",
+              "args": {"source": "database"},
+              "dependencies": [],
+              "role": {
+                "role_id": "role_etl",
+                "name": "ETL Role",
+                "subagents": [],
+                "skills": ["etl"],
+                "description": "ETL role",
+                "tool_permissions": {
+                  "bash": {"allowed_commands": [], "blocked_commands": [], "require_confirmation": []},
+                  "write": {"max_file_size_mb": 10, "allowed_extensions": []}
+                },
+                "file_permissions": {"allowed_paths": [], "denied_paths": [], "read_only_paths": []}
+              }
+            },
+            {
+              "task_id": "transform",
+              "name": "Transform",
+              "description": "Transform extracted data",
+              "priority": 2,
+              "status": "Pending",
+              "prompt": "Transforming data...",
+              "executor": "log",
+              "args": {},
+              "inputs": {
+                "extracted_id": "$.extract.output.task_id"
+              },
+              "dependencies": ["extract"],
+              "role": {
+                "role_id": "role_etl",
+                "name": "ETL Role",
+                "subagents": [],
+                "skills": ["etl"],
+                "description": "ETL role",
+                "tool_permissions": {
+                  "bash": {"allowed_commands": [], "blocked_commands": [], "require_confirmation": []},
+                  "write": {"max_file_size_mb": 10, "allowed_extensions": []}
+                },
+                "file_permissions": {"allowed_paths": [], "denied_paths": [], "read_only_paths": []}
+              }
+            },
+            {
+              "task_id": "load",
+              "name": "Load",
+              "description": "Load data to destination",
+              "priority": 3,
+              "status": "Pending",
+              "prompt": "Loading data...",
+              "executor": "log",
+              "args": {"destination": "warehouse"},
+              "inputs": {
+                "transformed_id": "$.transform.output.task_id"
+              },
+              "dependencies": ["transform"],
+              "role": {
+                "role_id": "role_etl",
+                "name": "ETL Role",
+                "subagents": [],
+                "skills": ["etl"],
+                "description": "ETL role",
+                "tool_permissions": {
+                  "bash": {"allowed_commands": [], "blocked_commands": [], "require_confirmation": []},
+                  "write": {"max_file_size_mb": 10, "allowed_extensions": []}
+                },
+                "file_permissions": {"allowed_paths": [], "denied_paths": [], "read_only_paths": []}
+              }
+            }
+          ],
+          "config": {
+            "max_concurrent_tasks": 1
+          }
+        }
+      },
+      "dependencies": ["init"],
+      "role": {
+        "role_id": "role_pipeline",
+        "name": "Pipeline Role",
+        "subagents": [],
+        "skills": ["orchestration"],
+        "description": "Pipeline orchestration role",
+        "tool_permissions": {
+          "bash": {"allowed_commands": [], "blocked_commands": [], "require_confirmation": []},
+          "write": {"max_file_size_mb": 10, "allowed_extensions": []}
+        },
+        "file_permissions": {"allowed_paths": [], "denied_paths": [], "read_only_paths": []}
+      }
+    },
+    {
+      "task_id": "finalize",
+      "name": "Finalize",
+      "description": "Finalize the pipeline",
+      "priority": 3,
+      "status": "Pending",
+      "prompt": "Finalize and cleanup",
+      "executor": "log",
+      "args": {},
+      "inputs": {
+        "load_task_id": "$.data_pipeline.output.load.output.task_id",
+        "load_status": "$.data_pipeline.output.load.status"
+      },
+      "dependencies": ["data_pipeline"],
+      "role": {
+        "role_id": "role_finalize",
+        "name": "Finalize Role",
+        "subagents": [],
+        "skills": [],
+        "description": "Finalization role",
+        "tool_permissions": {
+          "bash": {"allowed_commands": [], "blocked_commands": [], "require_confirmation": []},
+          "write": {"max_file_size_mb": 10, "allowed_extensions": []}
+        },
+        "file_permissions": {"allowed_paths": [], "denied_paths": [], "read_only_paths": []}
+      }
+    }
+  ],
+  "config": {
+    "max_concurrent_tasks": 2
+  }
+}

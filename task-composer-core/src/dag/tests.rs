@@ -31,6 +31,8 @@ fn test_add_task() {
         executor: String::from("log"),
         args: serde_json::Value::Null,
         inputs: serde_json::Value::Null,
+        if_condition: None,
+        else_condition: None,
     };
 
     dag.add_task(task);
@@ -60,6 +62,8 @@ fn test_add_edge() {
         executor: String::from("log"),
         args: serde_json::Value::Null,
         inputs: serde_json::Value::Null,
+        if_condition: None,
+        else_condition: None,
     };
     let task2 = Task {
         task_id: "2".to_string(),
@@ -81,6 +85,8 @@ fn test_add_edge() {
         executor: String::from("log"),
         args: serde_json::Value::Null,
         inputs: serde_json::Value::Null,
+        if_condition: None,
+        else_condition: None,
     };
 
     let id1 = task1.task_id.clone();
@@ -183,7 +189,7 @@ fn test_from_json() {
 #[test]
 fn test_from_json_file() {
     // sample_dag.json を読み込むテスト
-    let json = std::fs::read_to_string("sample_dag.json").unwrap();
+    let json = std::fs::read_to_string("../sample_dag.json").unwrap();
     let dag = DAG::from_json(&json).unwrap();
 
     // 4つのタスクが読み込まれたことを確認
@@ -203,7 +209,7 @@ fn test_from_json_file() {
 
 #[test]
 fn test_get_dependencies() {
-    let json = std::fs::read_to_string("sample_dag.json").unwrap();
+    let json = std::fs::read_to_string("../sample_dag.json").unwrap();
     let dag = DAG::from_json(&json).unwrap();
 
     // Task 1 は Task 2, 3 への依存を持つ
@@ -221,7 +227,7 @@ fn test_get_dependencies() {
 
 #[test]
 fn test_topological_sort() {
-    let json = std::fs::read_to_string("sample_dag.json").unwrap();
+    let json = std::fs::read_to_string("../sample_dag.json").unwrap();
     let dag = DAG::from_json(&json).unwrap();
 
     let sorted = dag.topological_sort().unwrap();
@@ -278,7 +284,7 @@ fn test_topological_sort_cycle_detection() {
 
 #[test]
 fn test_compute_all_descendants() {
-    let json = std::fs::read_to_string("sample_dag.json").unwrap();
+    let json = std::fs::read_to_string("../sample_dag.json").unwrap();
     let dag = DAG::from_json(&json).unwrap();
 
     let descendants = dag.compute_all_descendants().unwrap();
@@ -397,7 +403,7 @@ fn test_compute_all_descendants_large_graph() {
 
 #[test]
 fn test_compute_all_ancestors() {
-    let json = std::fs::read_to_string("sample_dag.json").unwrap();
+    let json = std::fs::read_to_string("../sample_dag.json").unwrap();
     let dag = DAG::from_json(&json).unwrap();
 
     let ancestors = dag.compute_all_ancestors().unwrap();
@@ -491,7 +497,7 @@ fn test_compute_all_ancestors_large_graph() {
 fn test_get_all_parallel_pairs() {
     // sample_dag.json: 1 → 2 → 4, 1 → 3 → 4
     // 並行ペア: (2, 3) のみ
-    let json = std::fs::read_to_string("sample_dag.json").unwrap();
+    let json = std::fs::read_to_string("../sample_dag.json").unwrap();
     let dag = DAG::from_json(&json).unwrap();
 
     let pairs = dag.get_all_parallel_pairs().unwrap();
@@ -650,7 +656,7 @@ impl TaskExecutor for TestExecutor {
         self.execution_count.fetch_add(1, Ordering::SeqCst);
         Ok(ExecutionResult {
             task_id: task.task_id.clone(),
-            success: true,
+            status: ExecutionStatus::Success,
             output: serde_json::json!({
                 "task_id": task.task_id,
                 "message": format!("Task {} executed", task.task_id)
@@ -676,7 +682,7 @@ async fn test_execute_async_simple() {
     let results = dag.execute_async().await.unwrap();
 
     assert_eq!(results.len(), 1);
-    assert!(results.get("1").unwrap().success);
+    assert_eq!(results.get("1").unwrap().status, ExecutionStatus::Success);
     assert_eq!(counter.load(Ordering::SeqCst), 1);
 }
 
@@ -751,7 +757,7 @@ async fn test_execute_async_parallel_execution() {
 
     // 全てのタスクが成功していることを確認
     for (_, result) in &results {
-        assert!(result.success);
+        assert_eq!(result.status, ExecutionStatus::Success);
     }
 }
 
@@ -816,8 +822,8 @@ async fn test_execute_async_with_log_executor() {
     let results = dag.execute_async().await.unwrap();
 
     assert_eq!(results.len(), 2);
-    assert!(results.get("1").unwrap().success);
-    assert!(results.get("2").unwrap().success);
+    assert_eq!(results.get("1").unwrap().status, ExecutionStatus::Success);
+    assert_eq!(results.get("2").unwrap().status, ExecutionStatus::Success);
 }
 
 #[tokio::test]
@@ -871,6 +877,312 @@ async fn test_execute_async_inputs_resolution() {
     let results = dag.execute_async().await.unwrap();
 
     assert_eq!(results.len(), 2);
-    assert!(results.get("producer").unwrap().success);
-    assert!(results.get("consumer").unwrap().success);
+    assert_eq!(results.get("producer").unwrap().status, ExecutionStatus::Success);
+    assert_eq!(results.get("consumer").unwrap().status, ExecutionStatus::Success);
+}
+
+// ============================================
+// if/else条件付き実行のテスト
+// ============================================
+
+#[tokio::test]
+async fn test_execute_async_if_condition_true() {
+    // if条件がtrueの場合、タスクは実行される
+    let json = r#"
+    {
+        "tasks": [
+            {
+                "task_id": "validate",
+                "name": "Validate",
+                "description": "",
+                "priority": 1,
+                "status": "Pending",
+                "prompt": "",
+                "executor": "test",
+                "args": {},
+                "dependencies": [],
+                "role": {
+                    "role_id": "r1",
+                    "name": "Role 1",
+                    "subagents": [],
+                    "skills": [],
+                    "description": "",
+                    "tool_permissions": {
+                        "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+                        "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+                    },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            },
+            {
+                "task_id": "on_success",
+                "name": "On Success",
+                "description": "",
+                "priority": 1,
+                "status": "Pending",
+                "prompt": "",
+                "executor": "test",
+                "args": {},
+                "dependencies": ["validate"],
+                "if": "$.validate.output.task_id == \"validate\"",
+                "role": {
+                    "role_id": "r1",
+                    "name": "Role 1",
+                    "subagents": [],
+                    "skills": [],
+                    "description": "",
+                    "tool_permissions": {
+                        "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+                        "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+                    },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            }
+        ]
+    }
+    "#;
+
+    let mut dag = DAG::from_json(json).unwrap();
+    let counter = StdArc::new(AtomicUsize::new(0));
+    dag.register_executor(Box::new(TestExecutor::new(counter.clone())));
+
+    let results = dag.execute_async().await.unwrap();
+
+    assert_eq!(results.len(), 2);
+    assert_eq!(results.get("validate").unwrap().status, ExecutionStatus::Success);
+    assert_eq!(results.get("on_success").unwrap().status, ExecutionStatus::Success);
+    assert_eq!(counter.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn test_execute_async_if_condition_false() {
+    // if条件がfalseの場合、タスクはスキップされる
+    let json = r#"
+    {
+        "tasks": [
+            {
+                "task_id": "validate",
+                "name": "Validate",
+                "description": "",
+                "priority": 1,
+                "status": "Pending",
+                "prompt": "",
+                "executor": "test",
+                "args": {},
+                "dependencies": [],
+                "role": {
+                    "role_id": "r1",
+                    "name": "Role 1",
+                    "subagents": [],
+                    "skills": [],
+                    "description": "",
+                    "tool_permissions": {
+                        "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+                        "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+                    },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            },
+            {
+                "task_id": "on_success",
+                "name": "On Success",
+                "description": "",
+                "priority": 1,
+                "status": "Pending",
+                "prompt": "",
+                "executor": "test",
+                "args": {},
+                "dependencies": ["validate"],
+                "if": "$.validate.output.task_id == \"nonexistent\"",
+                "role": {
+                    "role_id": "r1",
+                    "name": "Role 1",
+                    "subagents": [],
+                    "skills": [],
+                    "description": "",
+                    "tool_permissions": {
+                        "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+                        "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+                    },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            }
+        ]
+    }
+    "#;
+
+    let mut dag = DAG::from_json(json).unwrap();
+    let counter = StdArc::new(AtomicUsize::new(0));
+    dag.register_executor(Box::new(TestExecutor::new(counter.clone())));
+
+    let results = dag.execute_async().await.unwrap();
+
+    assert_eq!(results.len(), 2);
+    assert_eq!(results.get("validate").unwrap().status, ExecutionStatus::Success);
+    assert_eq!(results.get("on_success").unwrap().status, ExecutionStatus::Skipped);
+    assert_eq!(counter.load(Ordering::SeqCst), 1); // validateのみ実行
+}
+
+#[tokio::test]
+async fn test_execute_async_else_condition() {
+    // else条件のテスト
+    let json = r#"
+    {
+        "tasks": [
+            {
+                "task_id": "validate",
+                "name": "Validate",
+                "description": "",
+                "priority": 1,
+                "status": "Pending",
+                "prompt": "",
+                "executor": "test",
+                "args": {},
+                "dependencies": [],
+                "role": {
+                    "role_id": "r1",
+                    "name": "Role 1",
+                    "subagents": [],
+                    "skills": [],
+                    "description": "",
+                    "tool_permissions": {
+                        "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+                        "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+                    },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            },
+            {
+                "task_id": "on_failure",
+                "name": "On Failure",
+                "description": "",
+                "priority": 1,
+                "status": "Pending",
+                "prompt": "",
+                "executor": "test",
+                "args": {},
+                "dependencies": ["validate"],
+                "else": "$.validate.output.task_id == \"validate\"",
+                "role": {
+                    "role_id": "r1",
+                    "name": "Role 1",
+                    "subagents": [],
+                    "skills": [],
+                    "description": "",
+                    "tool_permissions": {
+                        "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+                        "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+                    },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            }
+        ]
+    }
+    "#;
+
+    let mut dag = DAG::from_json(json).unwrap();
+    let counter = StdArc::new(AtomicUsize::new(0));
+    dag.register_executor(Box::new(TestExecutor::new(counter.clone())));
+
+    let results = dag.execute_async().await.unwrap();
+
+    assert_eq!(results.len(), 2);
+    assert_eq!(results.get("validate").unwrap().status, ExecutionStatus::Success);
+    // else条件がtrueなのでスキップされる
+    assert_eq!(results.get("on_failure").unwrap().status, ExecutionStatus::Skipped);
+    assert_eq!(counter.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn test_execute_async_skip_propagation() {
+    // スキップ伝播のテスト: 依存先がスキップされたら依存元もスキップ
+    let json = r#"
+    {
+        "tasks": [
+            {
+                "task_id": "first",
+                "name": "First",
+                "description": "",
+                "priority": 1,
+                "status": "Pending",
+                "prompt": "",
+                "executor": "test",
+                "args": {},
+                "dependencies": [],
+                "role": {
+                    "role_id": "r1",
+                    "name": "Role 1",
+                    "subagents": [],
+                    "skills": [],
+                    "description": "",
+                    "tool_permissions": {
+                        "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+                        "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+                    },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            },
+            {
+                "task_id": "second",
+                "name": "Second",
+                "description": "",
+                "priority": 1,
+                "status": "Pending",
+                "prompt": "",
+                "executor": "test",
+                "args": {},
+                "dependencies": ["first"],
+                "if": "false",
+                "role": {
+                    "role_id": "r1",
+                    "name": "Role 1",
+                    "subagents": [],
+                    "skills": [],
+                    "description": "",
+                    "tool_permissions": {
+                        "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+                        "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+                    },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            },
+            {
+                "task_id": "third",
+                "name": "Third",
+                "description": "",
+                "priority": 1,
+                "status": "Pending",
+                "prompt": "",
+                "executor": "test",
+                "args": {},
+                "dependencies": ["second"],
+                "role": {
+                    "role_id": "r1",
+                    "name": "Role 1",
+                    "subagents": [],
+                    "skills": [],
+                    "description": "",
+                    "tool_permissions": {
+                        "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+                        "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+                    },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            }
+        ]
+    }
+    "#;
+
+    let mut dag = DAG::from_json(json).unwrap();
+    let counter = StdArc::new(AtomicUsize::new(0));
+    dag.register_executor(Box::new(TestExecutor::new(counter.clone())));
+
+    let results = dag.execute_async().await.unwrap();
+
+    assert_eq!(results.len(), 3);
+    assert_eq!(results.get("first").unwrap().status, ExecutionStatus::Success);
+    assert_eq!(results.get("second").unwrap().status, ExecutionStatus::Skipped);
+    // thirdはsecondがスキップされたので伝播でスキップ
+    assert_eq!(results.get("third").unwrap().status, ExecutionStatus::Skipped);
+    assert_eq!(counter.load(Ordering::SeqCst), 1); // firstのみ実行
 }

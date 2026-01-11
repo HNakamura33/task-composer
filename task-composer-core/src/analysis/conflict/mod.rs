@@ -8,7 +8,7 @@
 //! - ディレクトリ境界を考慮したパスのprefix matching
 //!
 //! # 使用例
-//! ```
+//! ```ignore
 //! let dag = DAG::from_json(&json)?;
 //! let detector = ConflictDetector::new(dag);
 //! let conflicts = detector.check_file_conflicts()?;
@@ -27,7 +27,7 @@ use crate::dag::DAG;
 /// - "/src" と "/src/api" → true（親子関係）
 /// - "/src" と "/src2" → false（別ディレクトリ）
 /// - "/src" と "/test" → false（無関係）
-fn paths_overlap(path_a: &str, path_b: &str) -> bool {
+pub fn paths_overlap(path_a: &str, path_b: &str) -> bool {
     if path_a == path_b {
         return true;
     }
@@ -156,7 +156,7 @@ impl ConflictDetector {
     /// - `WriteRead`: 一方が書き込み、他方が読み取る
     ///
     /// # Example
-    /// ```
+    /// ```ignore
     /// let detector = ConflictDetector::new(dag);
     /// let conflicts = detector.check_file_conflicts()?;
     /// for conflict in conflicts {

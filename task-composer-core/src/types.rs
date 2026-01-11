@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 /// タスクを表す構造体
 ///
 /// DAG内の各ノードに対応し、タスクの詳細情報を保持します。
-#[derive(Deserialize, Clone)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Task {
     /// タスクの一意な識別子
     pub task_id: String,
@@ -44,6 +44,14 @@ pub struct Task {
     /// タスク実行時の引数
     #[serde(default)]
     pub args: serde_json::Value,
+
+    /// 実行条件（trueなら実行）
+    #[serde(default, rename = "if")]
+    pub if_condition: Option<String>,
+
+    /// 実行条件（falseなら実行）= ifの否定
+    #[serde(default, rename = "else")]
+    pub else_condition: Option<String>,
 }
 
 /// Task のデフォルト値
@@ -61,6 +69,8 @@ impl Default for Task {
             dependencies: vec![],
             inputs: serde_json::Value::Null,
             args: serde_json::Value::Null,
+            if_condition: None,
+            else_condition: None,
         }
     }
 }
@@ -68,7 +78,7 @@ impl Default for Task {
 /// ロール（役割）を表す構造体
 ///
 /// タスクを実行するエージェントの役割と権限を定義します。
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Role {
     /// ロールの一意な識別子
     pub role_id: String,
@@ -104,7 +114,7 @@ impl Default for Role {
 /// ファイルアクセス権限を表す構造体
 ///
 /// ファイルシステムへのアクセス制御を定義します。
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct FilePermission {
     /// 許可するパス（例: "${project_root}/src"）
     pub allowed_paths: Vec<String>,
@@ -128,7 +138,7 @@ impl Default for FilePermission {
 /// Bashコマンド実行権限を表す構造体
 ///
 /// シェルコマンドの実行制御を定義します。
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct BashPermission {
     /// 許可するコマンド（例: "git", "npm"）
     pub allowed_commands: Vec<String>,
@@ -152,7 +162,7 @@ impl Default for BashPermission {
 /// ファイル書き込み権限を表す構造体
 ///
 /// ファイル書き込み操作の制限を定義します。
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct WritePermission {
     /// 最大ファイルサイズ（MB）
     pub max_file_size_mb: Option<u32>,
@@ -173,7 +183,7 @@ impl Default for WritePermission {
 /// ツール実行権限を表す構造体
 ///
 /// 各ツールの実行権限をまとめて管理します。
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ToolPermission {
     /// Bashコマンド権限
     pub bash: BashPermission,
@@ -195,7 +205,7 @@ impl Default for ToolPermission {
 /// タスクの状態を表すenum
 ///
 /// タスクのライフサイクルにおける現在の状態を示します。
-#[derive(Deserialize, Clone)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum Status {
     /// 未着手: タスクがまだ開始されていない
     Pending,
@@ -231,7 +241,7 @@ pub struct FileConflict {
 /// ファイル競合の種類を表すenum
 ///
 /// 並行タスク間で発生しうるファイルアクセス競合のパターンを定義します。
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub enum FileConflictType {
     /// 書き込み-書き込み競合: 両タスクが同じパスに書き込もうとする
     WriteWrite,
@@ -254,7 +264,7 @@ pub enum FileConflictType {
 ///
 /// let custom_config = Config { max_concurrent_tasks: 10 };
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Config {
     /// 同時に実行できるタスクの最大数
     ///

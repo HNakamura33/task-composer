@@ -45,12 +45,15 @@ task-composer/
 ├── sample_mcp_dag.json     # MCP連携サンプル
 ├── sample_embedded_reference.json  # 埋め込み参照サンプル
 ├── sample_mcp_with_role.json       # Role付きMCPサンプル
+├── sample_if_else.json     # if/else条件付き実行サンプル
+├── sample_subgraph.json    # サブグラフ実行サンプル
+├── sample_nested_subgraph.json  # ネストしたサブグラフサンプル
 └── CLAUDE.md               # このファイル
 ```
 
 ## 主要な構造体
 
-- `Task` - タスク情報（task_id, name, description, priority, status, prompt, executor, args, inputs, role, dependencies）
+- `Task` - タスク情報（task_id, name, description, priority, status, prompt, executor, args, inputs, role, dependencies, if_condition, else_condition）
 - `Role` - ロール情報（role_id, name, subagents, skills, description, tool_permissions, file_permissions）
 - `FilePermission` - ファイル権限（allowed_paths, denied_paths, read_only_paths）
 - `ToolPermission` - ツール権限（bash, write）
@@ -59,7 +62,8 @@ task-composer/
 - `Status` - タスク状態（Pending, InProgress, Completed）
 - `DAG` - グラフ本体（nodes, edges, edges_rev, registry, config）
 - `Config` - 設定（max_concurrent_tasks）
-- `ExecutionResult` - 実行結果（task_id, success, output）
+- `ExecutionResult` - 実行結果（task_id, status, output）
+- `ExecutionStatus` - 実行ステータス（Success, Failed, Skipped）
 - `ResolveContext` - パス解決コンテキスト（previous_results, current_task）
 
 ## 実装済み機能
@@ -79,10 +83,23 @@ task-composer/
 - `${...}` - 文字列内への埋め込み参照
 - ネストしたフィールド、配列インデックス対応
 
+### 条件付き実行（if/else）
+- `if` フィールド - 条件がtrueなら実行、falseならスキップ
+- `else` フィールド - 条件がtrueならスキップ、falseなら実行
+- スキップ伝播 - 依存先がスキップされると依存元もスキップ
+- 条件式: 比較演算（`==`, `!=`, `>`, `<`, `>=`, `<=`）、論理演算（`&&`, `||`, `!`）
+
 ### Executor
 - `LogExecutor` - デバッグ・テスト用ログ出力
 - `McpExecutor` - MCP (Model Context Protocol) 連携
+- `DagExecutor` - サブグラフ（入れ子DAG）実行
 - `ExecutorRegistry` - Executor管理
+
+### サブグラフ実行
+- `args.dag` でサブDAG定義を指定
+- ネストしたサブグラフのサポート（最大3レベル）
+- サブグラフ内でのパス参照（`$.{task_id}.output.{field}`）
+- 親DAGからサブグラフ結果を参照（`$.{subdag_task}.output.{inner_task}.output.{field}`）
 
 ### MCP Server (Python)
 - `claude_code_query` - Claude Codeへのクエリ実行
