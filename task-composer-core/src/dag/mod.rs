@@ -9,7 +9,7 @@
 //! - 循環依存の検出
 //!
 //! # 使用例
-//! ```
+//! ```ignore
 //! let json = std::fs::read_to_string("sample_dag.json").unwrap();
 //! let dag = DAG::from_json(&json).unwrap();
 //!
@@ -17,14 +17,17 @@
 //! let order = dag.topological_sort().unwrap();
 //! ```
 
-use std::collections::{HashMap, HashSet};
+use crate::path_resolver::{ResolveContext, evaluate_condition, resolve_inputs};
+use crate::task_executor::{
+    ExecutionContext, ExecutionResult, ExecutionStatus, ExecutorRegistry, TaskExecutor,
+};
+use crate::types::{Config, LoopConfig, LoopContext, Task};
 use serde::Deserialize;
-use crate::types::{Task, Config, LoopConfig, LoopContext};
-use crate::task_executor::{ExecutionContext, ExecutorRegistry, TaskExecutor, ExecutionResult, ExecutionStatus};
-use crate::path_resolver::{resolve_inputs, evaluate_condition, ResolveContext};
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tokio::sync::mpsc;
-
+use tokio::time::timeout;
 
 /// JSON読み込み用のDAG構造体
 ///
@@ -61,9 +64,7 @@ pub struct DAG {
     /// - 値: タスク情報
     pub nodes: HashMap<String, Task>,
 
-
     // pub task_manager: TaskManager,
-
     pub registry: Arc<ExecutorRegistry>,
 
     pub config: Config,
@@ -87,6 +88,7 @@ impl DAG {
     ///
     /// # Example
     /// ```
+    /// # use task_composer_core::DAG;
     /// let dag = DAG::new();
     /// ```
     pub fn new() -> Self {
@@ -131,6 +133,7 @@ impl DAG {
     ///
     /// # Example
     /// ```
+    /// # use task_composer_core::{DAG, Task};
     /// let mut dag = DAG::new();
     /// let task = Task::default();
     /// dag.add_task(task);
@@ -149,7 +152,7 @@ impl DAG {
     /// * `to` - 終点ノードID（依存先）
     ///
     /// # Example
-    /// ```
+    /// ```ignore
     /// dag.add_edge("1", "2");  // Task 1 → Task 2
     /// ```
     pub fn add_edge(&mut self, from: &str, to: &str) {
@@ -174,7 +177,7 @@ impl DAG {
     /// * `Err(serde_json::Error)` - パース失敗時
     ///
     /// # Example
-    /// ```
+    /// ```ignore
     /// let json = r#"{"tasks": [...]}"#;
     /// let dag = DAG::from_json(json)?;
     /// ```
@@ -209,7 +212,7 @@ impl DAG {
     /// * `None` - タスクが存在しない場合
     ///
     /// # Example
-    /// ```
+    /// ```ignore
     /// let deps = dag.get_dependencies("1");
     /// if let Some(dep_list) = deps {
     ///     println!("Task 1 depends on: {:?}", dep_list);
@@ -229,7 +232,7 @@ impl DAG {
     /// * `Err(String)` - 循環が検出された場合
     ///
     /// # Example
-    /// ```
+    /// ```ignore
     /// let order = dag.topological_sort()?;
     /// for task_id in order {
     ///     println!("Execute: {}", task_id);
@@ -273,7 +276,7 @@ impl DAG {
     }
 
     // pub fn execute(&mut self) -> Result<HashMap<String, ExecutionResult>, String> {
-        
+
     //     let mut in_degree: HashMap<String, usize> = HashMap::new();
     //     let mut results: HashMap<String, ExecutionResult> = HashMap::new();
 
@@ -286,7 +289,7 @@ impl DAG {
     //             *in_degree.get_mut(to).unwrap() += 1;
     //         }
     //     }
-        
+
     //     let mut queue: Vec<String> = Vec::new();
 
     //     // 入次数が0のノード（ルートノード）をキューに追加
@@ -384,27 +387,28 @@ impl DAG {
         loop_context: Option<&LoopContext>,
     ) -> Result<HashMap<String, ExecutionResult>, String> {
         let mut in_degree: HashMap<String, usize> = HashMap::new();
-        
+
         for node in self.nodes.keys() {
             in_degree.insert(node.clone(), 0);
         }
-        
+
         for (_from, to_list) in &self.edges {
             for to in to_list {
                 *in_degree.get_mut(to).unwrap() += 1;
             }
         }
-        
+
         let mut queue: Vec<String> = Vec::new();
-        
+
         // 入次数が0のノード（ルートノード）をキューに追加
         for (node, &degree) in &in_degree {
             if degree == 0 {
                 queue.push(node.clone());
             }
         }
-        
-        let results: Arc<Mutex<HashMap<String, ExecutionResult>>> = Arc::new(Mutex::new(HashMap::new()));
+
+        let results: Arc<Mutex<HashMap<String, ExecutionResult>>> =
+            Arc::new(Mutex::new(HashMap::new()));
         let (tx, mut rx) = mpsc::channel::<(String, Result<ExecutionResult, String>)>(100);
 
         let mut running_tasks = 0;
@@ -412,7 +416,9 @@ impl DAG {
 
         loop {
             while running_tasks < self.config.max_concurrent_tasks {
-                let Some(task_id) = queue.pop() else { break; };
+                let Some(task_id) = queue.pop() else {
+                    break;
+                };
                 let task = self.nodes.get(&task_id).unwrap().clone();
                 let tx = tx.clone();
                 let results_clone = Arc::clone(&results);
@@ -426,7 +432,8 @@ impl DAG {
 
                 // スキップ判定: 依存先がスキップされていたらこのタスクもスキップ
                 let dependency_skipped = task.dependencies.iter().any(|dep_id| {
-                    previous_results.get(dep_id)
+                    previous_results
+                        .get(dep_id)
                         .map(|r| r.status == ExecutionStatus::Skipped)
                         .unwrap_or(false)
                 });
@@ -483,23 +490,22 @@ impl DAG {
                     continue;
                 }
 
-                // argsを解決（$.self.role等の参照を解決）
-                let resolved_args = resolve_inputs(&task.args, &resolve_ctx)
-                    .map_err(|e| format!("Failed to resolve args for task {}: {}", task.task_id, e))?;
-
-                // inputsを解決
-                let resolved_inputs = resolve_inputs(&task.inputs, &resolve_ctx)
-                    .map_err(|e| format!("Failed to resolve inputs for task {}: {}", task.task_id, e))?;
-
-                // 解決済みのargsとinputsをマージ
-                let merged_args = merge_json_values(resolved_args, resolved_inputs);
+                // argsを解決（パス参照 $.task.output.* 等を解決）
+                let resolved_args = resolve_inputs(&task.args, &resolve_ctx).map_err(|e| {
+                    format!("Failed to resolve args for task {}: {}", task.task_id, e)
+                })?;
 
                 let ctx = ExecutionContext {
-                    args: merged_args,
+                    args: resolved_args,
                     env_vars: HashMap::new(),
                 };
 
                 let registry = Arc::clone(&self.registry);
+
+                // タイムアウト値を決定（タスク個別 > Config デフォルト）
+                let timeout_secs = task
+                    .timeout_secs
+                    .or(self.config.default_task_timeout_secs);
 
                 tokio::spawn(async move {
                     let executor = match registry.get(&task.executor) {
@@ -511,7 +517,22 @@ impl DAG {
                             return;
                         }
                     };
-                    let result = executor.execute_task(&task, &ctx).await;
+
+                    // タイムアウト付きで実行
+                    let result = if let Some(secs) = timeout_secs {
+                        match timeout(Duration::from_secs(secs), executor.execute_task(&task, &ctx))
+                            .await
+                        {
+                            Ok(inner_result) => inner_result,
+                            Err(_) => Err(format!(
+                                "Task '{}' timed out after {} seconds",
+                                task_id, secs
+                            )),
+                        }
+                    } else {
+                        executor.execute_task(&task, &ctx).await
+                    };
+
                     match result {
                         Ok(exec_result) => {
                             let _ = tx.send((task_id, Ok(exec_result))).await;
@@ -530,7 +551,6 @@ impl DAG {
                 break;
             }
 
-            
             if let Some((task_id, result)) = rx.recv().await {
                 running_tasks -= 1;
 
@@ -553,16 +573,15 @@ impl DAG {
                     }
                 }
             }
-            
-
         }
 
-
         let results_map = results.lock().unwrap().clone();
-        let success_count = results_map.values()
+        let success_count = results_map
+            .values()
             .filter(|r| r.status == ExecutionStatus::Success)
             .count();
-        let skipped_count = results_map.values()
+        let skipped_count = results_map
+            .values()
             .filter(|r| r.status == ExecutionStatus::Skipped)
             .count();
 
@@ -572,10 +591,14 @@ impl DAG {
         if actual_failed > 0 || failed_count > 0 {
             Err(format!(
                 "{} task(s) failed, {} task(s) skipped",
-                failed_count + actual_failed, skipped_count
+                failed_count + actual_failed,
+                skipped_count
             ))
         } else {
-            println!("  [Execution complete: {} succeeded, {} skipped]", success_count, skipped_count);
+            println!(
+                "  [Execution complete: {} succeeded, {} skipped]",
+                success_count, skipped_count
+            );
             Ok(results_map)
         }
     }
@@ -599,7 +622,10 @@ impl DAG {
         let mut previous_results: Option<HashMap<String, serde_json::Value>> = None;
         let mut results: HashMap<String, ExecutionResult>;
 
-        println!("  [Loop execution started: max_iterations={}]", config.max_iterations);
+        println!(
+            "  [Loop execution started: max_iterations={}]",
+            config.max_iterations
+        );
 
         loop {
             // LoopContextを構築
@@ -609,10 +635,10 @@ impl DAG {
                 previous_results: previous_results.clone(),
             };
 
-            println!("  [Loop iteration {} (first={})]", iteration, loop_context.first);
-
-            // タスク状態をリセット
-            self.reset_task_states();
+            println!(
+                "  [Loop iteration {} (first={})]",
+                iteration, loop_context.first
+            );
 
             // LoopContextを渡して実行
             results = self.execute_once(Some(&loop_context)).await?;
@@ -665,14 +691,6 @@ impl DAG {
         Ok(results)
     }
 
-    /// タスクの状態をリセットする（ループ実行時に使用）
-    fn reset_task_states(&mut self) {
-        use crate::types::Status;
-        for task in self.nodes.values_mut() {
-            task.status = Status::Pending;
-        }
-    }
-
     /// if/else条件を評価してスキップするかどうかを判定する
     ///
     /// # 実行ルール
@@ -683,23 +701,27 @@ impl DAG {
     /// | `if` | false | スキップ |
     /// | `else` | true | スキップ |
     /// | `else` | false | 実行 |
-    fn evaluate_skip_condition(
-        &self,
-        task: &Task,
-        ctx: &ResolveContext,
-    ) -> Result<bool, String> {
+    fn evaluate_skip_condition(&self, task: &Task, ctx: &ResolveContext) -> Result<bool, String> {
         // if条件がある場合
         if let Some(ref if_cond) = task.if_condition {
-            let result = evaluate_condition(if_cond, ctx)
-                .map_err(|e| format!("Failed to evaluate if condition for task {}: {}", task.task_id, e))?;
+            let result = evaluate_condition(if_cond, ctx).map_err(|e| {
+                format!(
+                    "Failed to evaluate if condition for task {}: {}",
+                    task.task_id, e
+                )
+            })?;
             // ifがfalseならスキップ
             return Ok(!result);
         }
 
         // else条件がある場合
         if let Some(ref else_cond) = task.else_condition {
-            let result = evaluate_condition(else_cond, ctx)
-                .map_err(|e| format!("Failed to evaluate else condition for task {}: {}", task.task_id, e))?;
+            let result = evaluate_condition(else_cond, ctx).map_err(|e| {
+                format!(
+                    "Failed to evaluate else condition for task {}: {}",
+                    task.task_id, e
+                )
+            })?;
             // elseがtrueならスキップ
             return Ok(result);
         }
@@ -716,10 +738,7 @@ impl DAG {
     /// # Arguments
     /// * `in_degree` - 各ノードの入次数を保持するHashMap
     /// * `queue` - 処理待ちノードのキュー
-    fn init_queue_with_roots(
-        in_degree: &HashMap<String, usize>,
-        queue: &mut Vec<String>,
-    ) {
+    fn init_queue_with_roots(in_degree: &HashMap<String, usize>, queue: &mut Vec<String>) {
         for (node, &degree) in in_degree {
             if degree == 0 {
                 queue.push(node.clone());
@@ -748,7 +767,7 @@ impl DAG {
                 queue.push(to.clone());
             }
         }
-    }    
+    }
 
     /// 全ノードの子孫集合を計算する
     ///
@@ -760,7 +779,7 @@ impl DAG {
     /// * `Err(String)` - グラフに循環が含まれている場合
     ///
     /// # Example
-    /// ```
+    /// ```ignore
     /// let descendants = dag.compute_all_descendants()?;
     /// let desc_1 = descendants.get("1").unwrap();
     /// // desc_1 には "1" から到達可能な全ノードIDが含まれる
@@ -799,7 +818,7 @@ impl DAG {
     /// * `Err(String)` - グラフに循環が含まれている場合
     ///
     /// # Example
-    /// ```
+    /// ```ignore
     /// let ancestors = dag.compute_all_ancestors()?;
     /// let anc_4 = ancestors.get("4").unwrap();
     /// // anc_4 には "4" に到達可能な全ノードIDが含まれる
@@ -839,7 +858,7 @@ impl DAG {
     /// * `Err(String)` - グラフに循環が含まれている場合
     ///
     /// # Example
-    /// ```
+    /// ```ignore
     /// let pairs = dag.get_all_parallel_pairs()?;
     /// for (a, b) in pairs {
     ///     println!("{} と {} は並行実行可能", a, b);
@@ -870,25 +889,6 @@ impl DAG {
         }
 
         Ok(pairs)
-    }
-}
-
-/// 2つのJSON値をマージする
-///
-/// - 両方がObjectの場合: キーをマージ（overrideで上書き）
-/// - それ以外: overrideがNullでなければoverrideを返す、Nullならbaseを返す
-fn merge_json_values(base: serde_json::Value, override_val: serde_json::Value) -> serde_json::Value {
-    use serde_json::Value;
-
-    match (base, override_val) {
-        (Value::Object(mut base_map), Value::Object(override_map)) => {
-            for (key, value) in override_map {
-                base_map.insert(key, value);
-            }
-            Value::Object(base_map)
-        }
-        (base, Value::Null) => base,
-        (_, override_val) => override_val,
     }
 }
 

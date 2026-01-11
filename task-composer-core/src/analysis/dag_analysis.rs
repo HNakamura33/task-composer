@@ -143,7 +143,7 @@ fn compute_critical_path(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Task, Status};
+    use crate::types::Task;
 
     fn create_test_dag() -> DAG {
         let mut dag = DAG::new();
@@ -151,71 +151,67 @@ mod tests {
         // Task 1 (root)
         dag.add_task(Task {
             task_id: "1".to_string(),
-            name: "Task 1".to_string(),
-            description: "".to_string(),
+            name: Some("Task 1".to_string()),
+            description: Some("".to_string()),
             priority: 1,
-            status: Status::Pending,
-            prompt: "".to_string(),
+            prompt: Some("".to_string()),
             executor: "log".to_string(),
             dependencies: vec![],
             role: Default::default(),
             args: serde_json::Value::Null,
-            inputs: serde_json::Value::Null,
             if_condition: None,
             else_condition: None,
+            timeout_secs: None,
         });
 
         // Task 2 depends on 1
         dag.add_task(Task {
             task_id: "2".to_string(),
-            name: "Task 2".to_string(),
-            description: "".to_string(),
+            name: Some("Task 2".to_string()),
+            description: Some("".to_string()),
             priority: 1,
-            status: Status::Pending,
-            prompt: "".to_string(),
+            prompt: Some("".to_string()),
             executor: "log".to_string(),
             dependencies: vec!["1".to_string()],
             role: Default::default(),
             args: serde_json::Value::Null,
-            inputs: serde_json::Value::Null,
             if_condition: None,
             else_condition: None,
+            timeout_secs: None,
         });
         dag.add_edge("1", "2");
 
         // Task 3 depends on 1
         dag.add_task(Task {
             task_id: "3".to_string(),
-            name: "Task 3".to_string(),
-            description: "".to_string(),
+            name: Some("Task 3".to_string()),
+            description: Some("".to_string()),
             priority: 1,
-            status: Status::Pending,
-            prompt: "".to_string(),
+            prompt: Some("".to_string()),
             executor: "log".to_string(),
             dependencies: vec!["1".to_string()],
             role: Default::default(),
             args: serde_json::Value::Null,
-            inputs: serde_json::Value::Null,
             if_condition: None,
             else_condition: None,
+            timeout_secs: None,
         });
         dag.add_edge("1", "3");
 
         // Task 4 depends on 2 and 3
         dag.add_task(Task {
             task_id: "4".to_string(),
-            name: "Task 4".to_string(),
-            description: "".to_string(),
+            name: Some("Task 4".to_string()),
+            description: Some("".to_string()),
             priority: 1,
-            status: Status::Pending,
-            prompt: "".to_string(),
+            prompt: Some("".to_string()),
             executor: "log".to_string(),
             dependencies: vec!["2".to_string(), "3".to_string()],
             role: Default::default(),
             args: serde_json::Value::Null,
-            inputs: serde_json::Value::Null,
             if_condition: None,
             else_condition: None,
+            timeout_secs: None,
         });
         dag.add_edge("2", "4");
         dag.add_edge("3", "4");

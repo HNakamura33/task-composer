@@ -1,10 +1,17 @@
-import sys
-import logging
-from pathlib import Path
-import anyio
 import json
+import logging
+import sys
 from dataclasses import asdict
-from claude_agent_sdk import query, ClaudeAgentOptions, ClaudeSDKClient, AgentDefinition, ResultMessage
+from pathlib import Path
+
+import anyio
+from claude_agent_sdk import (
+    AgentDefinition,
+    ClaudeAgentOptions,
+    ClaudeSDKClient,
+    ResultMessage,
+    query,
+)
 from fastmcp import FastMCP
 
 # stdioモードではログを完全に無効化（HTTPモードではログを有効にする）
@@ -64,23 +71,35 @@ def build_role_system_prompt(role: dict) -> str | None:
     if file_perms.get("allowed_paths"):
         parts.append(f"\n## Allowed Paths: {', '.join(file_perms['allowed_paths'])}")
     if file_perms.get("denied_paths"):
-        parts.append(f"\n## Denied Paths (DO NOT ACCESS): {', '.join(file_perms['denied_paths'])}")
+        parts.append(
+            f"\n## Denied Paths (DO NOT ACCESS): {', '.join(file_perms['denied_paths'])}"
+        )
     if file_perms.get("read_only_paths"):
-        parts.append(f"\n## Read-Only Paths: {', '.join(file_perms['read_only_paths'])}")
+        parts.append(
+            f"\n## Read-Only Paths: {', '.join(file_perms['read_only_paths'])}"
+        )
 
     # ツール権限情報（ClaudeAgentOptionsのallowed_toolsとは異なる詳細な権限）
     tool_perms = role.get("tool_permissions", {})
     bash_perms = tool_perms.get("bash", {})
     if bash_perms.get("allowed_commands"):
-        parts.append(f"\n## Allowed Bash Commands: {', '.join(bash_perms['allowed_commands'])}")
+        parts.append(
+            f"\n## Allowed Bash Commands: {', '.join(bash_perms['allowed_commands'])}"
+        )
     if bash_perms.get("blocked_commands"):
-        parts.append(f"\n## Blocked Bash Commands: {', '.join(bash_perms['blocked_commands'])}")
+        parts.append(
+            f"\n## Blocked Bash Commands: {', '.join(bash_perms['blocked_commands'])}"
+        )
     if bash_perms.get("require_confirmation"):
-        parts.append(f"\n## Commands Requiring Confirmation: {', '.join(bash_perms['require_confirmation'])}")
+        parts.append(
+            f"\n## Commands Requiring Confirmation: {', '.join(bash_perms['require_confirmation'])}"
+        )
 
     write_perms = tool_perms.get("write", {})
     if write_perms.get("allowed_extensions"):
-        parts.append(f"\n## Allowed File Extensions: {', '.join(write_perms['allowed_extensions'])}")
+        parts.append(
+            f"\n## Allowed File Extensions: {', '.join(write_perms['allowed_extensions'])}"
+        )
     if write_perms.get("max_file_size_mb"):
         parts.append(f"\n## Max File Size: {write_perms['max_file_size_mb']}MB")
 
@@ -100,50 +119,39 @@ def json_to_options(data: dict | None = None) -> ClaudeAgentOptions:
         tools=data.get("tools"),
         allowed_tools=data.get("allowed_tools", []),
         disallowed_tools=data.get("disallowed_tools", []),
-
         # プロンプト設定
         system_prompt=data.get("system_prompt"),
-
         # MCP設定
         mcp_servers=data.get("mcp_servers", {}),
-
         # 権限設定
         permission_mode=data.get("permission_mode"),
         permission_prompt_tool_name=data.get("permission_prompt_tool_name"),
-
         # 会話制御
         continue_conversation=data.get("continue_conversation", False),
         resume=data.get("resume"),
         fork_session=data.get("fork_session", False),
         max_turns=data.get("max_turns"),
-
         # 予算・制限
         max_budget_usd=data.get("max_budget_usd"),
         max_thinking_tokens=data.get("max_thinking_tokens"),
         max_buffer_size=data.get("max_buffer_size"),
-
         # モデル設定
         model=data.get("model"),
         fallback_model=data.get("fallback_model"),
         betas=data.get("betas", []),
-
         # パス設定
         cwd=data.get("cwd"),
         cli_path=data.get("cli_path"),
         settings=data.get("settings"),
         add_dirs=data.get("add_dirs", []),
-
         # 環境設定
         env=data.get("env", {}),
         extra_args=data.get("extra_args", {}),
-
         # 出力設定
         include_partial_messages=data.get("include_partial_messages", False),
         output_format=data.get("output_format"),
-
         # エージェント設定
         agents=parse_agents(data.get("agents")),
-
         # その他
         user=data.get("user"),
         setting_sources=data.get("setting_sources"),
@@ -151,6 +159,7 @@ def json_to_options(data: dict | None = None) -> ClaudeAgentOptions:
         plugins=data.get("plugins", []),
         enable_file_checkpointing=data.get("enable_file_checkpointing", False),
     )
+
 
 def load_request_from_json(file_path: str | Path) -> dict:
     """JSONファイルからリクエストを読み込む
@@ -186,16 +195,14 @@ async def request_claude_code(prompt: str, options: ClaudeAgentOptions):
 
         async for msg in client.receive_response():
             if isinstance(msg, ResultMessage):
-                if msg.subtype == 'success':
+                if msg.subtype == "success":
                     result.append(msg)
     return result
 
 
 @mcp.tool()
 async def claude_code_query(
-    prompt: str,
-    options: dict | None = None,
-    extra_options: dict | None = None
+    prompt: str, options: dict | None = None, extra_options: dict | None = None
 ) -> str:
     """Claude Codeにクエリを送信し、結果をJSON形式で返す
 
@@ -224,7 +231,9 @@ async def claude_code_query(
         role_system_prompt = build_role_system_prompt(role)
         if role_system_prompt:
             if agent_options.system_prompt:
-                agent_options.system_prompt = f"{role_system_prompt}\n\n{agent_options.system_prompt}"
+                agent_options.system_prompt = (
+                    f"{role_system_prompt}\n\n{agent_options.system_prompt}"
+                )
             else:
                 agent_options.system_prompt = role_system_prompt
 
@@ -244,6 +253,7 @@ async def request_from_json(file_path: str | Path):
     result = await request_claude_code(prompt, options)
     for msg in result:
         print(json.dumps(asdict(msg), ensure_ascii=False, indent=2))
+
 
 def parse_serve_args(args: list[str]) -> tuple[str, int]:
     """serveコマンドの引数を解析する
@@ -270,19 +280,31 @@ async def main():
     if len(sys.argv) < 2:
         print("使用方法:")
         print("  uv run main.py serve                    # stdio MCPサーバーとして起動")
-        print("  uv run main.py serve --http             # HTTP MCPサーバーとして起動 (port 8000)")
-        print("  uv run main.py serve --http --port 3000 # HTTP MCPサーバーとして起動 (port 3000)")
-        print("  uv run main.py <request.json>           # JSONファイルからリクエスト実行")
+        print(
+            "  uv run main.py serve --http             # HTTP MCPサーバーとして起動 (port 8000)"
+        )
+        print(
+            "  uv run main.py serve --http --port 3000 # HTTP MCPサーバーとして起動 (port 3000)"
+        )
+        print(
+            "  uv run main.py <request.json>           # JSONファイルからリクエスト実行"
+        )
         print("")
         print("JSONファイルの形式:")
-        print(json.dumps({
-            "prompt": "プロンプト文字列",
-            "options": {
-                "cwd": ".",
-                "max_turns": 10,
-                "permission_mode": "acceptEdits"
-            }
-        }, indent=2, ensure_ascii=False))
+        print(
+            json.dumps(
+                {
+                    "prompt": "プロンプト文字列",
+                    "options": {
+                        "cwd": ".",
+                        "max_turns": 10,
+                        "permission_mode": "default",
+                    },
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
         sys.exit(1)
 
     if sys.argv[1] == "serve":

@@ -5,7 +5,6 @@
       "name": "Analyze Code",
       "description": "Analyze main code structure",
       "priority": 1,
-      "status": "Pending",
       "prompt": "Analyze main code",
       "executor": "mcp",
       "args": {
@@ -48,7 +47,6 @@
       "name": "Analyze Tests",
       "description": "Analyze test cases",
       "priority": 1,
-      "status": "Pending",
       "prompt": "Analyze tests",
       "executor": "mcp",
       "args": {
@@ -91,7 +89,6 @@
       "name": "Check Cargo.toml",
       "description": "Check project metadata",
       "priority": 1,
-      "status": "Pending",
       "prompt": "Check Cargo.toml",
       "executor": "mcp",
       "args": {
@@ -134,7 +131,6 @@
       "name": "Create README",
       "description": "Create README.md from analysis",
       "priority": 2,
-      "status": "Pending",
       "prompt": "Create README",
       "executor": "mcp",
       "args": {
@@ -178,7 +174,6 @@
       "name": "Log Completion",
       "description": "Log that README was created",
       "priority": 3,
-      "status": "Pending",
       "prompt": "Log completion",
       "executor": "log",
       "args": {

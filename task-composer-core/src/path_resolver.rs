@@ -334,13 +334,12 @@ fn resolve_self_reference(
     // Taskの各フィールドにアクセス
     let value = match first_field {
         "task_id" => serde_json::Value::String(task.task_id.clone()),
-        "name" => serde_json::Value::String(task.name.clone()),
-        "description" => serde_json::Value::String(task.description.clone()),
+        "name" => serde_json::Value::String(task.display_name().to_string()),
+        "description" => serde_json::Value::String(task.description.clone().unwrap_or_default()),
         "priority" => serde_json::Value::Number(task.priority.into()),
-        "prompt" => serde_json::Value::String(task.prompt.clone()),
+        "prompt" => serde_json::Value::String(task.prompt.clone().unwrap_or_default()),
         "executor" => serde_json::Value::String(task.executor.clone()),
         "dependencies" => serde_json::to_value(&task.dependencies).unwrap(),
-        "inputs" => task.inputs.clone(),
         "args" => task.args.clone(),
         "role" => serde_json::to_value(&task.role).unwrap(),
         _ => return Err(PathResolveError::SelfFieldNotFound(first_field.to_string())),
@@ -805,10 +804,10 @@ mod tests {
 
         Task {
             task_id: "test-task".to_string(),
-            name: "Test Task".to_string(),
-            description: "A test task".to_string(),
+            name: Some("Test Task".to_string()),
+            description: Some("A test task".to_string()),
             priority: 5,
-            prompt: "Do something".to_string(),
+            prompt: Some("Do something".to_string()),
             executor: "test-executor".to_string(),
             dependencies: vec!["1".to_string(), "2".to_string()],
             args: json!({"key": "value"}),

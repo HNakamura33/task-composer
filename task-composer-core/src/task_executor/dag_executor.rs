@@ -81,7 +81,7 @@ mod tests {
     fn create_test_task() -> Task {
         Task {
             task_id: "sub_dag_task".to_string(),
-            name: "Sub DAG Task".to_string(),
+            name: Some("Sub DAG Task".to_string()),
             executor: "dag".to_string(),
             ..Default::default()
         }
@@ -122,11 +122,9 @@ mod tests {
                     "name": "Sub Task 1",
                     "description": "A sub task",
                     "priority": 1,
-                    "status": "Pending",
                     "prompt": "",
                     "executor": "log",
                     "args": {},
-                    "inputs": {},
                     "dependencies": [],
                     "role": {
                         "role_id": "test_role",

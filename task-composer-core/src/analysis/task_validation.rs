@@ -42,18 +42,12 @@ pub fn validate_task(task_id: &str, task: &Task, dag: &DAG) -> Vec<AnalysisItem>
 fn validate_required_fields(task_id: &str, task: &Task) -> Vec<AnalysisItem> {
     let mut items = Vec::new();
 
-    // name が空
-    if task.name.trim().is_empty() {
-        items.push(AnalysisItem {
-            level: AnalysisLevel::Error,
-            category: "必須フィールド".to_string(),
-            message: format!("タスク {} の name が空です", task_id),
-            related_tasks: vec![task_id.to_string()],
-        });
-    }
+    // prompt が空（警告）- Optional なので未設定または空文字列の場合に警告
+    let prompt_is_empty = task.prompt.as_ref()
+        .map(|p| p.trim().is_empty())
+        .unwrap_or(true);
 
-    // prompt が空（警告）
-    if task.prompt.trim().is_empty() {
+    if prompt_is_empty {
         items.push(AnalysisItem {
             level: AnalysisLevel::Warning,
             category: "推奨フィールド".to_string(),
@@ -221,41 +215,42 @@ fn paths_overlap(path_a: &str, path_b: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Status, Role, FilePermission};
+    use crate::types::{Role, FilePermission};
 
     fn create_test_task(task_id: &str) -> Task {
         Task {
             task_id: task_id.to_string(),
-            name: "Test Task".to_string(),
-            description: "".to_string(),
+            name: Some("Test Task".to_string()),
+            description: Some("".to_string()),
             priority: 1,
-            status: Status::Pending,
-            prompt: "Test prompt".to_string(),
+            prompt: Some("Test prompt".to_string()),
             executor: "log".to_string(),
             dependencies: vec![],
             role: Default::default(),
             args: serde_json::Value::Null,
-            inputs: serde_json::Value::Null,
             if_condition: None,
             else_condition: None,
+            timeout_secs: None,
         }
     }
 
     #[test]
     fn test_validate_empty_name() {
         let mut task = create_test_task("1");
-        task.name = "".to_string();
+        task.name = Some("".to_string());
 
         let dag = DAG::new();
         let items = validate_task("1", &task, &dag);
 
-        assert!(items.iter().any(|i| i.level == AnalysisLevel::Error && i.message.contains("name")));
+        // name is optional, so empty name should not cause error
+        // This test verifies that empty name does not cause a crash
+        assert!(items.iter().all(|i| !i.message.contains("name が空")));
     }
 
     #[test]
     fn test_validate_empty_prompt() {
         let mut task = create_test_task("1");
-        task.prompt = "".to_string();
+        task.prompt = Some("".to_string());
 
         let dag = DAG::new();
         let items = validate_task("1", &task, &dag);

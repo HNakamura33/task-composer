@@ -5,7 +5,6 @@
       "name": "Initialize",
       "description": "Initialize the pipeline",
       "priority": 1,
-      "status": "Pending",
       "prompt": "Initialize the data pipeline",
       "executor": "log",
       "args": {"stage": "init"},
@@ -28,7 +27,6 @@
       "name": "Data Pipeline",
       "description": "Execute ETL sub-graph",
       "priority": 2,
-      "status": "Pending",
       "prompt": "Run the ETL pipeline",
       "executor": "dag",
       "args": {
@@ -39,7 +37,6 @@
               "name": "Extract",
               "description": "Extract data from source",
               "priority": 1,
-              "status": "Pending",
               "prompt": "Extracting data...",
               "executor": "log",
               "args": {"source": "database"},
@@ -62,11 +59,9 @@
               "name": "Transform",
               "description": "Transform extracted data",
               "priority": 2,
-              "status": "Pending",
               "prompt": "Transforming data...",
               "executor": "log",
-              "args": {},
-              "inputs": {
+              "args": {
                 "extracted_id": "$.extract.output.task_id"
               },
               "dependencies": ["extract"],
@@ -88,11 +83,10 @@
               "name": "Load",
               "description": "Load data to destination",
               "priority": 3,
-              "status": "Pending",
               "prompt": "Loading data...",
               "executor": "log",
-              "args": {"destination": "warehouse"},
-              "inputs": {
+              "args": {
+                "destination": "warehouse",
                 "transformed_id": "$.transform.output.task_id"
               },
               "dependencies": ["transform"],
@@ -134,11 +128,9 @@
       "name": "Finalize",
       "description": "Finalize the pipeline",
       "priority": 3,
-      "status": "Pending",
       "prompt": "Finalize and cleanup",
       "executor": "log",
-      "args": {},
-      "inputs": {
+      "args": {
         "load_task_id": "$.data_pipeline.output.load.output.task_id",
         "load_status": "$.data_pipeline.output.load.status"
       },

@@ -1,5 +1,5 @@
 use super::*;
-use crate::types::{Role, Status, ToolPermission, FilePermission};
+use crate::types::{Role, ToolPermission, FilePermission};
 
 #[test]
 fn test_new_dag_is_empty() {
@@ -13,11 +13,10 @@ fn test_add_task() {
     let mut dag = DAG::new();
     let task = Task {
         task_id: "1".to_string(),
-        name: "Sample Task".to_string(),
-        description: "This is a sample task.".to_string(),
+        name: Some("Sample Task".to_string()),
+        description: Some("This is a sample task.".to_string()),
         priority: 1,
-        status: Status::Pending,
-        prompt: "Execute sample task.".to_string(),
+        prompt: Some("Execute sample task.".to_string()),
         role: Role {
             role_id: "role_1".to_string(),
             name: "Sample Role".to_string(),
@@ -30,9 +29,9 @@ fn test_add_task() {
         dependencies: vec![],
         executor: String::from("log"),
         args: serde_json::Value::Null,
-        inputs: serde_json::Value::Null,
         if_condition: None,
         else_condition: None,
+        timeout_secs: None,
     };
 
     dag.add_task(task);
@@ -44,11 +43,10 @@ fn test_add_edge() {
     let mut dag = DAG::new();
     let task1 = Task {
         task_id: "1".to_string(),
-        name: "Task 1".to_string(),
-        description: "First task.".to_string(),
+        name: Some("Task 1".to_string()),
+        description: Some("First task.".to_string()),
         priority: 1,
-        status: Status::Pending,
-        prompt: "Execute task 1.".to_string(),
+        prompt: Some("Execute task 1.".to_string()),
         role: Role {
             role_id: "role_1".to_string(),
             name: "Role 1".to_string(),
@@ -61,17 +59,16 @@ fn test_add_edge() {
         dependencies: vec![],
         executor: String::from("log"),
         args: serde_json::Value::Null,
-        inputs: serde_json::Value::Null,
         if_condition: None,
         else_condition: None,
+        timeout_secs: None,
     };
     let task2 = Task {
         task_id: "2".to_string(),
-        name: "Task 2".to_string(),
-        description: "Second task.".to_string(),
+        name: Some("Task 2".to_string()),
+        description: Some("Second task.".to_string()),
         priority: 2,
-        status: Status::Pending,
-        prompt: "Execute task 2.".to_string(),
+        prompt: Some("Execute task 2.".to_string()),
         role: Role {
             role_id: "role_2".to_string(),
             name: "Role 2".to_string(),
@@ -84,9 +81,9 @@ fn test_add_edge() {
         dependencies: vec![],
         executor: String::from("log"),
         args: serde_json::Value::Null,
-        inputs: serde_json::Value::Null,
         if_condition: None,
         else_condition: None,
+        timeout_secs: None,
     };
 
     let id1 = task1.task_id.clone();
@@ -109,7 +106,6 @@ fn test_from_json() {
                 "name": "Task 1",
                 "description": "First task",
                 "priority": 1,
-                "status": "Pending",
                 "prompt": "Do task 1",
                 "executor": "log",
                 "args": {},
@@ -143,7 +139,6 @@ fn test_from_json() {
                 "name": "Task 2",
                 "description": "Second task",
                 "priority": 2,
-                "status": "Pending",
                 "prompt": "Do task 2",
                 "executor": "log",
                 "args": {},
@@ -771,7 +766,6 @@ async fn test_execute_async_with_log_executor() {
                 "name": "Task 1",
                 "description": "First task",
                 "priority": 1,
-                "status": "Pending",
                 "prompt": "Execute task 1",
                 "executor": "log",
                 "args": {},
@@ -794,7 +788,6 @@ async fn test_execute_async_with_log_executor() {
                 "name": "Task 2",
                 "description": "Second task",
                 "priority": 2,
-                "status": "Pending",
                 "prompt": "Execute task 2",
                 "executor": "log",
                 "args": {},
@@ -828,7 +821,7 @@ async fn test_execute_async_with_log_executor() {
 
 #[tokio::test]
 async fn test_execute_async_inputs_resolution() {
-    // inputsの解決をテスト
+    // argsのパス参照解決をテスト
     let json = r#"
     {
         "tasks": [
@@ -837,7 +830,6 @@ async fn test_execute_async_inputs_resolution() {
                 "name": "Producer",
                 "description": "",
                 "priority": 1,
-                "status": "Pending",
                 "prompt": "",
                 "executor": "log",
                 "args": {},
@@ -853,11 +845,9 @@ async fn test_execute_async_inputs_resolution() {
                 "name": "Consumer",
                 "description": "",
                 "priority": 2,
-                "status": "Pending",
                 "prompt": "",
                 "executor": "log",
-                "args": {},
-                "inputs": {
+                "args": {
                     "producer_id": "$.producer.output.task_id"
                 },
                 "dependencies": ["producer"],
@@ -896,8 +886,7 @@ async fn test_execute_async_if_condition_true() {
                 "name": "Validate",
                 "description": "",
                 "priority": 1,
-                "status": "Pending",
-                "prompt": "",
+                                "prompt": "",
                 "executor": "test",
                 "args": {},
                 "dependencies": [],
@@ -919,8 +908,7 @@ async fn test_execute_async_if_condition_true() {
                 "name": "On Success",
                 "description": "",
                 "priority": 1,
-                "status": "Pending",
-                "prompt": "",
+                                "prompt": "",
                 "executor": "test",
                 "args": {},
                 "dependencies": ["validate"],
@@ -965,8 +953,7 @@ async fn test_execute_async_if_condition_false() {
                 "name": "Validate",
                 "description": "",
                 "priority": 1,
-                "status": "Pending",
-                "prompt": "",
+                                "prompt": "",
                 "executor": "test",
                 "args": {},
                 "dependencies": [],
@@ -988,8 +975,7 @@ async fn test_execute_async_if_condition_false() {
                 "name": "On Success",
                 "description": "",
                 "priority": 1,
-                "status": "Pending",
-                "prompt": "",
+                                "prompt": "",
                 "executor": "test",
                 "args": {},
                 "dependencies": ["validate"],
@@ -1034,8 +1020,7 @@ async fn test_execute_async_else_condition() {
                 "name": "Validate",
                 "description": "",
                 "priority": 1,
-                "status": "Pending",
-                "prompt": "",
+                                "prompt": "",
                 "executor": "test",
                 "args": {},
                 "dependencies": [],
@@ -1057,8 +1042,7 @@ async fn test_execute_async_else_condition() {
                 "name": "On Failure",
                 "description": "",
                 "priority": 1,
-                "status": "Pending",
-                "prompt": "",
+                                "prompt": "",
                 "executor": "test",
                 "args": {},
                 "dependencies": ["validate"],
@@ -1104,8 +1088,7 @@ async fn test_execute_async_skip_propagation() {
                 "name": "First",
                 "description": "",
                 "priority": 1,
-                "status": "Pending",
-                "prompt": "",
+                                "prompt": "",
                 "executor": "test",
                 "args": {},
                 "dependencies": [],
@@ -1127,8 +1110,7 @@ async fn test_execute_async_skip_propagation() {
                 "name": "Second",
                 "description": "",
                 "priority": 1,
-                "status": "Pending",
-                "prompt": "",
+                                "prompt": "",
                 "executor": "test",
                 "args": {},
                 "dependencies": ["first"],
@@ -1151,8 +1133,7 @@ async fn test_execute_async_skip_propagation() {
                 "name": "Third",
                 "description": "",
                 "priority": 1,
-                "status": "Pending",
-                "prompt": "",
+                                "prompt": "",
                 "executor": "test",
                 "args": {},
                 "dependencies": ["second"],
@@ -1205,8 +1186,7 @@ async fn test_execute_async_loop_max_iterations() {
                 "name": "Counter",
                 "description": "",
                 "priority": 1,
-                "status": "Pending",
-                "prompt": "",
+                                "prompt": "",
                 "executor": "test",
                 "args": {},
                 "dependencies": [],
@@ -1256,8 +1236,7 @@ async fn test_execute_async_loop_until_condition() {
                 "name": "Task 1",
                 "description": "",
                 "priority": 1,
-                "status": "Pending",
-                "prompt": "",
+                                "prompt": "",
                 "executor": "test",
                 "args": {},
                 "dependencies": [],
@@ -1305,8 +1284,7 @@ async fn test_execute_async_loop_while_condition() {
                 "name": "Task 1",
                 "description": "",
                 "priority": 1,
-                "status": "Pending",
-                "prompt": "",
+                                "prompt": "",
                 "executor": "test",
                 "args": {},
                 "dependencies": [],
@@ -1353,8 +1331,7 @@ async fn test_execute_async_loop_with_multiple_tasks() {
                 "name": "Task 1",
                 "description": "",
                 "priority": 1,
-                "status": "Pending",
-                "prompt": "",
+                                "prompt": "",
                 "executor": "test",
                 "args": {},
                 "dependencies": [],
@@ -1376,8 +1353,7 @@ async fn test_execute_async_loop_with_multiple_tasks() {
                 "name": "Task 2",
                 "description": "",
                 "priority": 1,
-                "status": "Pending",
-                "prompt": "",
+                                "prompt": "",
                 "executor": "test",
                 "args": {},
                 "dependencies": ["task1"],
@@ -1423,8 +1399,7 @@ async fn test_execute_async_no_loop_config() {
                 "name": "Task 1",
                 "description": "",
                 "priority": 1,
-                "status": "Pending",
-                "prompt": "",
+                                "prompt": "",
                 "executor": "test",
                 "args": {},
                 "dependencies": [],

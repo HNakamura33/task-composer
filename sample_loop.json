@@ -9,7 +9,6 @@
       "name": "Counter Task",
       "description": "Increment counter each iteration",
       "priority": 1,
-      "status": "Pending",
       "prompt": "Count iteration: ${$.loop.iteration}",
       "executor": "log",
       "args": {
@@ -17,7 +16,6 @@
         "is_first": "$.loop.first",
         "previous_task_id": "$.loop.previous.counter.output.task_id"
       },
-      "inputs": {},
       "dependencies": [],
       "role": {
         "role_id": "counter_role",
@@ -48,13 +46,10 @@
       "name": "Logger Task",
       "description": "Log the current state",
       "priority": 1,
-      "status": "Pending",
       "prompt": "Logging iteration ${$.loop.iteration}",
       "executor": "log",
       "args": {
-        "message": "Iteration ${$.loop.iteration}: counter task_id = ${$.counter.output.task_id}"
-      },
-      "inputs": {
+        "message": "Iteration ${$.loop.iteration}: counter task_id = ${$.counter.output.task_id}",
         "counter_task_id": "$.counter.output.task_id"
       },
       "dependencies": ["counter"],

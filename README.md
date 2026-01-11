@@ -180,7 +180,8 @@ async fn main() {
     }
   ],
   "config": {
-    "max_concurrent_tasks": 4
+    "max_concurrent_tasks": 4,
+    "default_task_timeout_secs": 300
   }
 }
 ```
@@ -191,13 +192,14 @@ async fn main() {
 |-----------|-----|------|
 | `task_id` | String | タスクの一意な識別子 |
 | `name` | String | タスク名 |
-| `executor` | String | 使用するExecutorの名前（`log`, `mcp`） |
+| `executor` | String | 使用するExecutorの名前（`log`, `mcp`, `dag`） |
 | `args` | JSON | タスクに渡す静的な引数 |
 | `inputs` | JSON | 依存タスクの出力を参照するパス定義 |
 | `dependencies` | Array | 依存するタスクIDのリスト |
 | `if` | String? | 実行条件（trueなら実行、falseならスキップ） |
 | `else` | String? | 実行条件（trueならスキップ、falseなら実行） |
 | `role` | Object | ロール定義（権限を含む） |
+| `timeout_secs` | u64? | タスクのタイムアウト（秒）。省略時はconfigのデフォルト値を使用 |
 
 ## パス参照構文
 
@@ -404,6 +406,43 @@ Model Context Protocolを通じて外部MCPサーバーと連携します。
 ```
 
 初回イテレーション（`$.loop.first == true`）では、`$.loop.previous.*`は`null`を返します。
+
+### タイムアウト機能
+
+タスクの実行時間を制限してハングアップを防ぐことができます。
+
+#### 設定方法
+
+```json
+{
+  "config": {
+    "max_concurrent_tasks": 4,
+    "default_task_timeout_secs": 300
+  },
+  "tasks": [
+    {
+      "task_id": "quick_task",
+      "executor": "log"
+    },
+    {
+      "task_id": "long_task",
+      "executor": "mcp",
+      "timeout_secs": 900
+    }
+  ]
+}
+```
+
+#### タイムアウト設定
+
+| 設定場所 | フィールド | 説明 |
+|---------|-----------|------|
+| Config | `default_task_timeout_secs` | 全タスク共通のデフォルトタイムアウト（秒） |
+| Task | `timeout_secs` | タスク個別のタイムアウト（秒）、Configより優先 |
+
+- タスク個別の`timeout_secs`が設定されている場合、そちらが優先される
+- どちらも設定されていない場合、タイムアウトなしで実行される
+- タイムアウト時はタスクが失敗（Failed）として扱われる
 
 ### カスタムExecutorの作成
 

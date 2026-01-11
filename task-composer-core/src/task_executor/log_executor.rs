@@ -2,12 +2,12 @@
 //!
 //! テストやデバッグ用途に使用します。
 
-use super::{ExecutionContext, TaskExecutor, ExecutionResult, ExecutionStatus};
-use crate::types::{Task};
-use serde_json::json;
+use super::{ExecutionContext, ExecutionResult, ExecutionStatus, TaskExecutor};
+use crate::types::Task;
 use async_trait::async_trait;
-use tokio::time::{sleep, Duration};
 use rand::Rng;
+use serde_json::json;
+use tokio::time::{Duration, sleep};
 
 /// タスク情報をログ出力するExecutor
 ///
@@ -37,16 +37,15 @@ impl TaskExecutor for LogExecutor {
         task: &Task,
         ctx: &ExecutionContext,
     ) -> Result<ExecutionResult, String> {
-        
         // ランダムな遅延（100ms〜1000ms）でタスク実行時間をシミュレート
         let delay_ms = rand::thread_rng().gen_range(100..=1000);
         sleep(Duration::from_millis(delay_ms)).await;
-        
-        println!("Executing Task: {}", task.name);
+
+        println!("Executing Task: {}", task.display_name());
         println!("  ID:          {}", task.task_id);
-        println!("  Description: {}", task.description);
+        println!("  Description: {}", task.description.as_deref().unwrap_or(""));
         println!("  Priority:    {}", task.priority);
-        println!("  Prompt:      {}", task.prompt);
+        println!("  Prompt:      {}", task.prompt.as_deref().unwrap_or(""));
         println!("  Role:        {}", task.role.name);
 
         // 依存タスク情報
@@ -59,7 +58,7 @@ impl TaskExecutor for LogExecutor {
             println!("  Args:        {}", ctx.args);
         }
 
-        let result_message = format!("Task '{}' logged successfully", task.name);
+        let result_message = format!("Task '{}' logged successfully", task.display_name());
         println!("\n  --- Result ---");
         println!("  {}", result_message);
         println!("  --- End ---\n");
