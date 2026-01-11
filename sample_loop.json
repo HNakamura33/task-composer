@@ -1,0 +1,89 @@
+{
+  "loop_config": {
+    "max_iterations": 5,
+    "until_condition": "$.loop.iteration >= 3"
+  },
+  "tasks": [
+    {
+      "task_id": "counter",
+      "name": "Counter Task",
+      "description": "Increment counter each iteration",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "Count iteration: ${$.loop.iteration}",
+      "executor": "log",
+      "args": {
+        "iteration": "$.loop.iteration",
+        "is_first": "$.loop.first",
+        "previous_task_id": "$.loop.previous.counter.output.task_id"
+      },
+      "inputs": {},
+      "dependencies": [],
+      "role": {
+        "role_id": "counter_role",
+        "name": "Counter Role",
+        "description": "Simple counter role",
+        "subagents": [],
+        "skills": [],
+        "tool_permissions": {
+          "bash": {
+            "allowed_commands": [],
+            "blocked_commands": [],
+            "require_confirmation": []
+          },
+          "write": {
+            "max_file_size_mb": 10,
+            "allowed_extensions": []
+          }
+        },
+        "file_permissions": {
+          "allowed_paths": [],
+          "denied_paths": [],
+          "read_only_paths": []
+        }
+      }
+    },
+    {
+      "task_id": "logger",
+      "name": "Logger Task",
+      "description": "Log the current state",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "Logging iteration ${$.loop.iteration}",
+      "executor": "log",
+      "args": {
+        "message": "Iteration ${$.loop.iteration}: counter task_id = ${$.counter.output.task_id}"
+      },
+      "inputs": {
+        "counter_task_id": "$.counter.output.task_id"
+      },
+      "dependencies": ["counter"],
+      "role": {
+        "role_id": "logger_role",
+        "name": "Logger Role",
+        "description": "Logging role",
+        "subagents": [],
+        "skills": [],
+        "tool_permissions": {
+          "bash": {
+            "allowed_commands": [],
+            "blocked_commands": [],
+            "require_confirmation": []
+          },
+          "write": {
+            "max_file_size_mb": 10,
+            "allowed_extensions": []
+          }
+        },
+        "file_permissions": {
+          "allowed_paths": [],
+          "denied_paths": [],
+          "read_only_paths": []
+        }
+      }
+    }
+  ],
+  "config": {
+    "max_concurrent_tasks": 1
+  }
+}

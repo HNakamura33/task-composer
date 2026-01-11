@@ -1186,3 +1186,274 @@ async fn test_execute_async_skip_propagation() {
     assert_eq!(results.get("third").unwrap().status, ExecutionStatus::Skipped);
     assert_eq!(counter.load(Ordering::SeqCst), 1); // firstのみ実行
 }
+
+// ============================================
+// ループ実行のテスト
+// ============================================
+
+#[tokio::test]
+async fn test_execute_async_loop_max_iterations() {
+    // max_iterationsでループが終了することをテスト
+    let json = r#"
+    {
+        "loop_config": {
+            "max_iterations": 3
+        },
+        "tasks": [
+            {
+                "task_id": "counter",
+                "name": "Counter",
+                "description": "",
+                "priority": 1,
+                "status": "Pending",
+                "prompt": "",
+                "executor": "test",
+                "args": {},
+                "dependencies": [],
+                "role": {
+                    "role_id": "r1",
+                    "name": "Role 1",
+                    "subagents": [],
+                    "skills": [],
+                    "description": "",
+                    "tool_permissions": {
+                        "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+                        "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+                    },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            }
+        ]
+    }
+    "#;
+
+    let mut dag = DAG::from_json(json).unwrap();
+    let counter = StdArc::new(AtomicUsize::new(0));
+    dag.register_executor(Box::new(TestExecutor::new(counter.clone())));
+
+    let results = dag.execute_async().await.unwrap();
+
+    // 1タスク × 3イテレーション = 3回実行
+    assert_eq!(counter.load(Ordering::SeqCst), 3);
+    // 最終イテレーションの結果が返される
+    assert_eq!(results.len(), 1);
+    assert_eq!(results.get("counter").unwrap().status, ExecutionStatus::Success);
+}
+
+#[tokio::test]
+async fn test_execute_async_loop_until_condition() {
+    // until_conditionでループが終了することをテスト
+    // カウンターが2になったら終了
+    let json = r#"
+    {
+        "loop_config": {
+            "max_iterations": 10,
+            "until_condition": "$.loop.iteration >= 2"
+        },
+        "tasks": [
+            {
+                "task_id": "task1",
+                "name": "Task 1",
+                "description": "",
+                "priority": 1,
+                "status": "Pending",
+                "prompt": "",
+                "executor": "test",
+                "args": {},
+                "dependencies": [],
+                "role": {
+                    "role_id": "r1",
+                    "name": "Role 1",
+                    "subagents": [],
+                    "skills": [],
+                    "description": "",
+                    "tool_permissions": {
+                        "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+                        "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+                    },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            }
+        ]
+    }
+    "#;
+
+    let mut dag = DAG::from_json(json).unwrap();
+    let counter = StdArc::new(AtomicUsize::new(0));
+    dag.register_executor(Box::new(TestExecutor::new(counter.clone())));
+
+    let results = dag.execute_async().await.unwrap();
+
+    // iteration 0, 1, 2 で実行され、iteration 2 >= 2 でuntilが発動して終了
+    // つまり 3回実行される
+    assert_eq!(counter.load(Ordering::SeqCst), 3);
+    assert_eq!(results.len(), 1);
+}
+
+#[tokio::test]
+async fn test_execute_async_loop_while_condition() {
+    // while_conditionでループが継続することをテスト
+    let json = r#"
+    {
+        "loop_config": {
+            "max_iterations": 10,
+            "while_condition": "$.loop.iteration < 2"
+        },
+        "tasks": [
+            {
+                "task_id": "task1",
+                "name": "Task 1",
+                "description": "",
+                "priority": 1,
+                "status": "Pending",
+                "prompt": "",
+                "executor": "test",
+                "args": {},
+                "dependencies": [],
+                "role": {
+                    "role_id": "r1",
+                    "name": "Role 1",
+                    "subagents": [],
+                    "skills": [],
+                    "description": "",
+                    "tool_permissions": {
+                        "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+                        "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+                    },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            }
+        ]
+    }
+    "#;
+
+    let mut dag = DAG::from_json(json).unwrap();
+    let counter = StdArc::new(AtomicUsize::new(0));
+    dag.register_executor(Box::new(TestExecutor::new(counter.clone())));
+
+    let results = dag.execute_async().await.unwrap();
+
+    // iteration 0, 1, 2 で実行、実行後に iteration 2 < 2 が false なので終了
+    // つまり3回実行される（条件は実行後に評価される）
+    assert_eq!(counter.load(Ordering::SeqCst), 3);
+    assert_eq!(results.len(), 1);
+}
+
+#[tokio::test]
+async fn test_execute_async_loop_with_multiple_tasks() {
+    // 複数タスクを持つDAGのループテスト
+    let json = r#"
+    {
+        "loop_config": {
+            "max_iterations": 2
+        },
+        "tasks": [
+            {
+                "task_id": "task1",
+                "name": "Task 1",
+                "description": "",
+                "priority": 1,
+                "status": "Pending",
+                "prompt": "",
+                "executor": "test",
+                "args": {},
+                "dependencies": [],
+                "role": {
+                    "role_id": "r1",
+                    "name": "Role 1",
+                    "subagents": [],
+                    "skills": [],
+                    "description": "",
+                    "tool_permissions": {
+                        "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+                        "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+                    },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            },
+            {
+                "task_id": "task2",
+                "name": "Task 2",
+                "description": "",
+                "priority": 1,
+                "status": "Pending",
+                "prompt": "",
+                "executor": "test",
+                "args": {},
+                "dependencies": ["task1"],
+                "role": {
+                    "role_id": "r1",
+                    "name": "Role 1",
+                    "subagents": [],
+                    "skills": [],
+                    "description": "",
+                    "tool_permissions": {
+                        "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+                        "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+                    },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            }
+        ]
+    }
+    "#;
+
+    let mut dag = DAG::from_json(json).unwrap();
+    let counter = StdArc::new(AtomicUsize::new(0));
+    dag.register_executor(Box::new(TestExecutor::new(counter.clone())));
+
+    let results = dag.execute_async().await.unwrap();
+
+    // 2タスク × 2イテレーション = 4回実行
+    assert_eq!(counter.load(Ordering::SeqCst), 4);
+    // 最終イテレーションの両タスクの結果が返される
+    assert_eq!(results.len(), 2);
+    assert_eq!(results.get("task1").unwrap().status, ExecutionStatus::Success);
+    assert_eq!(results.get("task2").unwrap().status, ExecutionStatus::Success);
+}
+
+#[tokio::test]
+async fn test_execute_async_no_loop_config() {
+    // loop_configがない場合は通常実行
+    let json = r#"
+    {
+        "tasks": [
+            {
+                "task_id": "task1",
+                "name": "Task 1",
+                "description": "",
+                "priority": 1,
+                "status": "Pending",
+                "prompt": "",
+                "executor": "test",
+                "args": {},
+                "dependencies": [],
+                "role": {
+                    "role_id": "r1",
+                    "name": "Role 1",
+                    "subagents": [],
+                    "skills": [],
+                    "description": "",
+                    "tool_permissions": {
+                        "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+                        "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+                    },
+                    "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+                }
+            }
+        ]
+    }
+    "#;
+
+    let mut dag = DAG::from_json(json).unwrap();
+    assert!(dag.loop_config.is_none());
+
+    let counter = StdArc::new(AtomicUsize::new(0));
+    dag.register_executor(Box::new(TestExecutor::new(counter.clone())));
+
+    let results = dag.execute_async().await.unwrap();
+
+    // 1回だけ実行される
+    assert_eq!(counter.load(Ordering::SeqCst), 1);
+    assert_eq!(results.len(), 1);
+}
