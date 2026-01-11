@@ -3,7 +3,7 @@
 use clap::{Parser, Subcommand};
 use task_composer_core::dag::DAG;
 use task_composer_core::analysis::StaticAnalyzer;
-use task_composer_core::task_executor::{LogExecutor, McpExecutor};
+use task_composer_core::task_executor::{LogExecutor, McpExecutor, ExecutionStatus};
 
 #[derive(Parser)]
 #[command(name = "task-composer")]
@@ -194,7 +194,11 @@ async fn execute_dag(dag: &mut DAG) {
             println!("\n=== Execution Complete ===");
             println!("Executed {} tasks in {:.2?}", results.len(), elapsed);
             for (task_id, result) in &results {
-                let status = if result.success { "OK" } else { "FAILED" };
+                let status = match result.status {
+                    ExecutionStatus::Success => "OK",
+                    ExecutionStatus::Failed => "FAILED",
+                    ExecutionStatus::Skipped => "SKIPPED",
+                };
                 println!("  {}: {}", task_id, status);
             }
         }

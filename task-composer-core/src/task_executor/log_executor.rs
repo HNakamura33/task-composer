@@ -2,7 +2,7 @@
 //!
 //! テストやデバッグ用途に使用します。
 
-use super::{ExecutionContext, TaskExecutor, ExecutionResult};
+use super::{ExecutionContext, TaskExecutor, ExecutionResult, ExecutionStatus};
 use crate::types::{Task};
 use serde_json::json;
 use async_trait::async_trait;
@@ -68,7 +68,7 @@ impl TaskExecutor for LogExecutor {
 
         Ok(ExecutionResult {
             task_id: task.task_id.clone(),
-            success: true,
+            status: ExecutionStatus::Success,
             output: json!({
                 "executor": "log",
                 "task_id": task.task_id,

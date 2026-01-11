@@ -32,6 +32,8 @@ fn create_task_with_permissions(
         },
         args: serde_json::Value::Null,
         inputs: serde_json::Value::Null,
+        if_condition: None,
+        else_condition: None,
     }
 }
 

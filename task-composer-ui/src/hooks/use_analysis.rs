@@ -68,6 +68,8 @@ impl AnalysisOperations {
                 role: ui_task.role.clone(),
                 args: ui_task.args.clone(),
                 inputs: ui_task.inputs.clone(),
+                if_condition: None,
+                else_condition: None,
             };
             dag.add_task(task);
         }

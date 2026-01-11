@@ -44,6 +44,14 @@ pub struct Task {
     /// タスク実行時の引数
     #[serde(default)]
     pub args: serde_json::Value,
+
+    /// 実行条件（trueなら実行）
+    #[serde(default, rename = "if")]
+    pub if_condition: Option<String>,
+
+    /// 実行条件（falseなら実行）= ifの否定
+    #[serde(default, rename = "else")]
+    pub else_condition: Option<String>,
 }
 
 /// Task のデフォルト値
@@ -61,6 +69,8 @@ impl Default for Task {
             dependencies: vec![],
             inputs: serde_json::Value::Null,
             args: serde_json::Value::Null,
+            if_condition: None,
+            else_condition: None,
         }
     }
 }

@@ -21,7 +21,7 @@
 
 use std::collections::HashMap;
 use regex::Regex;
-use crate::task_executor::ExecutionResult;
+use crate::task_executor::{ExecutionResult, ExecutionStatus};
 use crate::types::Task;
 
 /// パス解決時のエラー
@@ -359,6 +359,296 @@ fn access_value<'a>(
     }
 }
 
+/// 条件式評価のエラー
+#[derive(Debug, PartialEq)]
+pub enum ConditionError {
+    /// パス解決に失敗
+    PathResolveError(PathResolveError),
+    /// 構文エラー
+    SyntaxError(String),
+    /// 型エラー（比較できない型）
+    TypeError(String),
+}
+
+impl std::fmt::Display for ConditionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConditionError::PathResolveError(e) => write!(f, "Path resolve error: {}", e),
+            ConditionError::SyntaxError(msg) => write!(f, "Syntax error: {}", msg),
+            ConditionError::TypeError(msg) => write!(f, "Type error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for ConditionError {}
+
+impl From<PathResolveError> for ConditionError {
+    fn from(e: PathResolveError) -> Self {
+        ConditionError::PathResolveError(e)
+    }
+}
+
+/// 条件式を評価する
+///
+/// # 対応する構文
+/// - パス参照: `$.task_id.output.field`
+/// - 比較演算: `==`, `!=`, `>`, `<`, `>=`, `<=`
+/// - 論理演算: `&&`, `||`
+/// - 否定: `!`（前置）
+/// - リテラル: `true`, `false`, `"string"`, `123`, `null`
+///
+/// # 例
+/// ```ignore
+/// evaluate_condition("$.validate.output.ok == true", &ctx)
+/// evaluate_condition("$.router.output.value != \"a\"", &ctx)
+/// evaluate_condition("$.task.output.count > 10", &ctx)
+/// ```
+pub fn evaluate_condition(
+    condition: &str,
+    ctx: &ResolveContext,
+) -> Result<bool, ConditionError> {
+    let condition = condition.trim();
+
+    // 空の条件はtrue
+    if condition.is_empty() {
+        return Ok(true);
+    }
+
+    // 否定演算子
+    if condition.starts_with('!') {
+        let inner = condition[1..].trim();
+        // !(...) の場合
+        if inner.starts_with('(') && inner.ends_with(')') {
+            return Ok(!evaluate_condition(&inner[1..inner.len()-1], ctx)?);
+        }
+        // !$.path の場合
+        if inner.starts_with("$.") {
+            let value = resolve_path(inner, ctx)?;
+            return Ok(!value_to_bool(&value));
+        }
+        return Ok(!evaluate_condition(inner, ctx)?);
+    }
+
+    // 括弧で囲まれた式
+    if condition.starts_with('(') && condition.ends_with(')') {
+        return evaluate_condition(&condition[1..condition.len()-1], ctx);
+    }
+
+    // 論理演算子（&&と||）を探す - 括弧のネストを考慮
+    if let Some((left, op, right)) = split_logical_operator(condition) {
+        let left_result = evaluate_condition(left, ctx)?;
+        match op {
+            "&&" => {
+                // 短絡評価
+                if !left_result {
+                    return Ok(false);
+                }
+                return evaluate_condition(right, ctx);
+            }
+            "||" => {
+                // 短絡評価
+                if left_result {
+                    return Ok(true);
+                }
+                return evaluate_condition(right, ctx);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    // 比較演算子を探す
+    if let Some((left, op, right)) = split_comparison_operator(condition) {
+        let left_value = parse_value(left.trim(), ctx)?;
+        let right_value = parse_value(right.trim(), ctx)?;
+        return compare_values(&left_value, op, &right_value);
+    }
+
+    // 単独の値（bool評価）
+    let value = parse_value(condition, ctx)?;
+    Ok(value_to_bool(&value))
+}
+
+/// 論理演算子で分割（括弧のネストを考慮）
+fn split_logical_operator(s: &str) -> Option<(&str, &str, &str)> {
+    let mut depth = 0;
+    let bytes = s.as_bytes();
+
+    // ||を先に探す（優先度が低い）
+    for i in 0..bytes.len().saturating_sub(1) {
+        match bytes[i] {
+            b'(' => depth += 1,
+            b')' => depth -= 1,
+            b'|' if depth == 0 && bytes.get(i + 1) == Some(&b'|') => {
+                return Some((&s[..i], "||", &s[i + 2..]));
+            }
+            _ => {}
+        }
+    }
+
+    // &&を探す
+    depth = 0;
+    for i in 0..bytes.len().saturating_sub(1) {
+        match bytes[i] {
+            b'(' => depth += 1,
+            b')' => depth -= 1,
+            b'&' if depth == 0 && bytes.get(i + 1) == Some(&b'&') => {
+                return Some((&s[..i], "&&", &s[i + 2..]));
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
+/// 比較演算子で分割
+fn split_comparison_operator(s: &str) -> Option<(&str, &str, &str)> {
+    // 2文字の演算子を先にチェック
+    for op in &["==", "!=", ">=", "<="] {
+        if let Some(pos) = s.find(op) {
+            return Some((&s[..pos], op, &s[pos + 2..]));
+        }
+    }
+
+    // 1文字の演算子
+    for op in &[">", "<"] {
+        if let Some(pos) = s.find(op) {
+            // >= や <= の一部でないことを確認
+            let next_char = s.chars().nth(pos + 1);
+            if next_char != Some('=') {
+                return Some((&s[..pos], op, &s[pos + 1..]));
+            }
+        }
+    }
+
+    None
+}
+
+/// 値をパースする（パス参照またはリテラル）
+fn parse_value(s: &str, ctx: &ResolveContext) -> Result<serde_json::Value, ConditionError> {
+    let s = s.trim();
+
+    // パス参照
+    if s.starts_with("$.") {
+        return Ok(resolve_path(s, ctx)?);
+    }
+
+    // ブールリテラル
+    if s == "true" {
+        return Ok(serde_json::Value::Bool(true));
+    }
+    if s == "false" {
+        return Ok(serde_json::Value::Bool(false));
+    }
+
+    // null
+    if s == "null" {
+        return Ok(serde_json::Value::Null);
+    }
+
+    // 文字列リテラル（"..."）
+    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
+        let inner = &s[1..s.len()-1];
+        // エスケープシーケンスを処理
+        let unescaped = inner.replace("\\\"", "\"").replace("\\\\", "\\");
+        return Ok(serde_json::Value::String(unescaped));
+    }
+
+    // 数値
+    if let Ok(n) = s.parse::<i64>() {
+        return Ok(serde_json::json!(n));
+    }
+    if let Ok(n) = s.parse::<f64>() {
+        return Ok(serde_json::json!(n));
+    }
+
+    Err(ConditionError::SyntaxError(format!("Cannot parse value: {}", s)))
+}
+
+/// 2つの値を比較
+fn compare_values(
+    left: &serde_json::Value,
+    op: &str,
+    right: &serde_json::Value,
+) -> Result<bool, ConditionError> {
+    match op {
+        "==" => Ok(values_equal(left, right)),
+        "!=" => Ok(!values_equal(left, right)),
+        ">" | "<" | ">=" | "<=" => compare_ordered(left, op, right),
+        _ => Err(ConditionError::SyntaxError(format!("Unknown operator: {}", op))),
+    }
+}
+
+/// 値が等しいか比較
+fn values_equal(left: &serde_json::Value, right: &serde_json::Value) -> bool {
+    match (left, right) {
+        (serde_json::Value::Null, serde_json::Value::Null) => true,
+        (serde_json::Value::Bool(a), serde_json::Value::Bool(b)) => a == b,
+        (serde_json::Value::Number(a), serde_json::Value::Number(b)) => {
+            // 数値比較（整数と浮動小数点を適切に処理）
+            if let (Some(ai), Some(bi)) = (a.as_i64(), b.as_i64()) {
+                ai == bi
+            } else if let (Some(af), Some(bf)) = (a.as_f64(), b.as_f64()) {
+                (af - bf).abs() < f64::EPSILON
+            } else {
+                false
+            }
+        }
+        (serde_json::Value::String(a), serde_json::Value::String(b)) => a == b,
+        _ => false,
+    }
+}
+
+/// 順序比較（数値のみ）
+fn compare_ordered(
+    left: &serde_json::Value,
+    op: &str,
+    right: &serde_json::Value,
+) -> Result<bool, ConditionError> {
+    let left_num = value_to_f64(left).ok_or_else(|| {
+        ConditionError::TypeError(format!("Cannot compare non-numeric value: {:?}", left))
+    })?;
+    let right_num = value_to_f64(right).ok_or_else(|| {
+        ConditionError::TypeError(format!("Cannot compare non-numeric value: {:?}", right))
+    })?;
+
+    Ok(match op {
+        ">" => left_num > right_num,
+        "<" => left_num < right_num,
+        ">=" => left_num >= right_num,
+        "<=" => left_num <= right_num,
+        _ => unreachable!(),
+    })
+}
+
+/// 値を数値に変換
+fn value_to_f64(value: &serde_json::Value) -> Option<f64> {
+    match value {
+        serde_json::Value::Number(n) => n.as_f64(),
+        _ => None,
+    }
+}
+
+/// 値をboolに変換（JavaScript風のtruthy/falsy）
+fn value_to_bool(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Null => false,
+        serde_json::Value::Bool(b) => *b,
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                i != 0
+            } else if let Some(f) = n.as_f64() {
+                f != 0.0
+            } else {
+                false
+            }
+        }
+        serde_json::Value::String(s) => !s.is_empty(),
+        serde_json::Value::Array(arr) => !arr.is_empty(),
+        serde_json::Value::Object(obj) => !obj.is_empty(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,7 +663,7 @@ mod tests {
             "1".to_string(),
             ExecutionResult {
                 task_id: "1".to_string(),
-                success: true,
+                status: ExecutionStatus::Success,
                 output: json!({
                     "user_id": "u123",
                     "config": {
@@ -394,7 +684,7 @@ mod tests {
             "001-101".to_string(),
             ExecutionResult {
                 task_id: "001-101".to_string(),
-                success: true,
+                status: ExecutionStatus::Success,
                 output: json!({
                     "name": "hyphenated-task",
                     "status": "complete"
@@ -897,5 +1187,168 @@ mod tests {
         assert_eq!(resolved["agent_role"], json!("Test Role"));
         assert_eq!(resolved["agent_skills"], json!(["coding", "testing"]));
         assert!(resolved["permissions"]["bash"].is_object());
+    }
+
+    // ============================================
+    // 条件式評価のテスト
+    // ============================================
+
+    /// 条件式評価テスト用のresultsを作成
+    fn create_condition_test_results() -> HashMap<String, ExecutionResult> {
+        let mut results = HashMap::new();
+
+        results.insert(
+            "validate".to_string(),
+            ExecutionResult {
+                task_id: "validate".to_string(),
+                status: ExecutionStatus::Success,
+                output: json!({
+                    "ok": true,
+                    "count": 42,
+                    "status": "success",
+                    "value": "a"
+                }),
+            },
+        );
+
+        results.insert(
+            "router".to_string(),
+            ExecutionResult {
+                task_id: "router".to_string(),
+                status: ExecutionStatus::Success,
+                output: json!({
+                    "value": "b",
+                    "count": 0
+                }),
+            },
+        );
+
+        results
+    }
+
+    #[test]
+    fn test_evaluate_condition_equality_true() {
+        let results = create_condition_test_results();
+        let ctx = ctx_without_task(&results);
+
+        let result = evaluate_condition("$.validate.output.ok == true", &ctx);
+        assert_eq!(result, Ok(true));
+    }
+
+    #[test]
+    fn test_evaluate_condition_equality_false() {
+        let results = create_condition_test_results();
+        let ctx = ctx_without_task(&results);
+
+        let result = evaluate_condition("$.validate.output.ok == false", &ctx);
+        assert_eq!(result, Ok(false));
+    }
+
+    #[test]
+    fn test_evaluate_condition_string_equality() {
+        let results = create_condition_test_results();
+        let ctx = ctx_without_task(&results);
+
+        let result = evaluate_condition("$.validate.output.status == \"success\"", &ctx);
+        assert_eq!(result, Ok(true));
+
+        let result = evaluate_condition("$.validate.output.value == \"a\"", &ctx);
+        assert_eq!(result, Ok(true));
+    }
+
+    #[test]
+    fn test_evaluate_condition_number_comparison() {
+        let results = create_condition_test_results();
+        let ctx = ctx_without_task(&results);
+
+        assert_eq!(evaluate_condition("$.validate.output.count > 10", &ctx), Ok(true));
+        assert_eq!(evaluate_condition("$.validate.output.count < 100", &ctx), Ok(true));
+        assert_eq!(evaluate_condition("$.validate.output.count >= 42", &ctx), Ok(true));
+        assert_eq!(evaluate_condition("$.validate.output.count <= 42", &ctx), Ok(true));
+        assert_eq!(evaluate_condition("$.validate.output.count == 42", &ctx), Ok(true));
+    }
+
+    #[test]
+    fn test_evaluate_condition_not_equal() {
+        let results = create_condition_test_results();
+        let ctx = ctx_without_task(&results);
+
+        let result = evaluate_condition("$.router.output.value != \"a\"", &ctx);
+        assert_eq!(result, Ok(true));
+    }
+
+    #[test]
+    fn test_evaluate_condition_and() {
+        let results = create_condition_test_results();
+        let ctx = ctx_without_task(&results);
+
+        let result = evaluate_condition("$.validate.output.ok == true && $.validate.output.count > 10", &ctx);
+        assert_eq!(result, Ok(true));
+
+        let result = evaluate_condition("$.validate.output.ok == true && $.validate.output.count < 10", &ctx);
+        assert_eq!(result, Ok(false));
+    }
+
+    #[test]
+    fn test_evaluate_condition_or() {
+        let results = create_condition_test_results();
+        let ctx = ctx_without_task(&results);
+
+        let result = evaluate_condition("$.validate.output.ok == false || $.validate.output.count > 10", &ctx);
+        assert_eq!(result, Ok(true));
+
+        let result = evaluate_condition("$.validate.output.ok == false || $.validate.output.count < 10", &ctx);
+        assert_eq!(result, Ok(false));
+    }
+
+    #[test]
+    fn test_evaluate_condition_negation() {
+        let results = create_condition_test_results();
+        let ctx = ctx_without_task(&results);
+
+        let result = evaluate_condition("!$.router.output.count", &ctx);
+        assert_eq!(result, Ok(true)); // count is 0, which is falsy
+
+        let result = evaluate_condition("!$.validate.output.ok", &ctx);
+        assert_eq!(result, Ok(false)); // ok is true, so !true = false
+    }
+
+    #[test]
+    fn test_evaluate_condition_truthy_value() {
+        let results = create_condition_test_results();
+        let ctx = ctx_without_task(&results);
+
+        // truthy values
+        let result = evaluate_condition("$.validate.output.ok", &ctx);
+        assert_eq!(result, Ok(true));
+
+        let result = evaluate_condition("$.validate.output.count", &ctx);
+        assert_eq!(result, Ok(true)); // 42 is truthy
+
+        // falsy value
+        let result = evaluate_condition("$.router.output.count", &ctx);
+        assert_eq!(result, Ok(false)); // 0 is falsy
+    }
+
+    #[test]
+    fn test_evaluate_condition_empty_is_true() {
+        let results = create_condition_test_results();
+        let ctx = ctx_without_task(&results);
+
+        let result = evaluate_condition("", &ctx);
+        assert_eq!(result, Ok(true));
+    }
+
+    #[test]
+    fn test_evaluate_condition_complex_expression() {
+        let results = create_condition_test_results();
+        let ctx = ctx_without_task(&results);
+
+        // (A && B) || C
+        let result = evaluate_condition(
+            "$.validate.output.ok == true && $.router.output.value == \"b\"",
+            &ctx
+        );
+        assert_eq!(result, Ok(true));
     }
 }
