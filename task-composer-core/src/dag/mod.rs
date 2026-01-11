@@ -19,7 +19,7 @@
 
 use std::collections::{HashMap, HashSet};
 use serde::Deserialize;
-use crate::types::{Task, Config};
+use crate::types::{Task, Config, LoopConfig, LoopContext};
 use crate::task_executor::{ExecutionContext, ExecutorRegistry, TaskExecutor, ExecutionResult, ExecutionStatus};
 use crate::path_resolver::{resolve_inputs, evaluate_condition, ResolveContext};
 use std::sync::{Arc, Mutex};
@@ -36,6 +36,9 @@ struct DAGJson {
     /// 設定（オプション）
     #[serde(default)]
     config: Config,
+    /// ループ設定（オプション）
+    #[serde(default)]
+    loop_config: Option<LoopConfig>,
 }
 
 /// DAG（有向非巡回グラフ）を表す構造体
@@ -58,13 +61,15 @@ pub struct DAG {
     /// - 値: タスク情報
     pub nodes: HashMap<String, Task>,
 
-    
+
     // pub task_manager: TaskManager,
 
     pub registry: Arc<ExecutorRegistry>,
 
     pub config: Config,
 
+    /// ループ設定
+    pub loop_config: Option<LoopConfig>,
 }
 
 /// DAG のデフォルト値
@@ -92,7 +97,7 @@ impl DAG {
             // task_manager: TaskManager::new(Arc::clone(&registry)),
             registry: Arc::new(ExecutorRegistry::new()),
             config: Config::default(),
-            
+            loop_config: None,
         }
     }
 
@@ -177,6 +182,7 @@ impl DAG {
         let dag_json: DAGJson = serde_json::from_str(json_str)?;
         let mut dag = DAG::new();
         dag.config = dag_json.config;
+        dag.loop_config = dag_json.loop_config;
 
         for task in dag_json.tasks {
             let dependencies = task.dependencies.clone();
@@ -341,6 +347,7 @@ impl DAG {
     ///
     /// トポロジカル順序に従ってタスクを実行します。
     /// 依存関係のないタスクは`config.max_concurrent_tasks`の上限まで並列実行されます。
+    /// `loop_config`が設定されている場合は、ループ実行を行います。
     ///
     /// # Returns
     /// - `Ok(HashMap<String, ExecutionResult>)`: 全タスクの実行結果
@@ -360,6 +367,22 @@ impl DAG {
     /// 3. タスク完了時に後続タスクの入次数を減らし、0になったらキューに追加
     /// 4. 全タスク完了まで繰り返す
     pub async fn execute_async(&mut self) -> Result<HashMap<String, ExecutionResult>, String> {
+        // ループ設定がある場合はループ実行
+        if let Some(loop_config) = self.loop_config.clone() {
+            return self.execute_with_loop(loop_config).await;
+        }
+
+        // 通常実行（ループなし）
+        self.execute_once(None).await
+    }
+
+    /// DAGを1回実行する（内部メソッド）
+    ///
+    /// loop_contextがSomeの場合、$.loop.*参照が利用可能になります。
+    async fn execute_once(
+        &mut self,
+        loop_context: Option<&LoopContext>,
+    ) -> Result<HashMap<String, ExecutionResult>, String> {
         let mut in_degree: HashMap<String, usize> = HashMap::new();
         
         for node in self.nodes.keys() {
@@ -433,6 +456,7 @@ impl DAG {
                 let resolve_ctx = ResolveContext {
                     previous_results: &previous_results,
                     current_task: Some(&task),
+                    loop_context,
                 };
 
                 // if/else条件の評価
@@ -554,7 +578,99 @@ impl DAG {
             println!("  [Execution complete: {} succeeded, {} skipped]", success_count, skipped_count);
             Ok(results_map)
         }
+    }
 
+    /// ループ実行を行う
+    ///
+    /// DAGを繰り返し実行し、条件に基づいてループを制御します。
+    /// 前回イテレーションの結果は`$.loop.previous.*`で参照可能です。
+    ///
+    /// # Arguments
+    /// * `config` - ループ設定
+    ///
+    /// # Returns
+    /// - `Ok(HashMap<String, ExecutionResult>)`: 最後のイテレーションの実行結果
+    /// - `Err(String)`: 実行エラー
+    async fn execute_with_loop(
+        &mut self,
+        config: LoopConfig,
+    ) -> Result<HashMap<String, ExecutionResult>, String> {
+        let mut iteration = 0;
+        let mut previous_results: Option<HashMap<String, serde_json::Value>> = None;
+        let mut results: HashMap<String, ExecutionResult>;
+
+        println!("  [Loop execution started: max_iterations={}]", config.max_iterations);
+
+        loop {
+            // LoopContextを構築
+            let loop_context = LoopContext {
+                iteration,
+                first: iteration == 0,
+                previous_results: previous_results.clone(),
+            };
+
+            println!("  [Loop iteration {} (first={})]", iteration, loop_context.first);
+
+            // タスク状態をリセット
+            self.reset_task_states();
+
+            // LoopContextを渡して実行
+            results = self.execute_once(Some(&loop_context)).await?;
+            iteration += 1;
+
+            // 最大回数チェック
+            if iteration >= config.max_iterations {
+                println!("  [Loop terminated: max_iterations reached]");
+                break;
+            }
+
+            // 条件評価用のコンテキストを作成
+            let eval_ctx = ResolveContext {
+                previous_results: &results,
+                current_task: None,
+                loop_context: Some(&loop_context),
+            };
+
+            // while条件チェック（falseなら終了）
+            if let Some(ref cond) = config.while_condition {
+                let should_continue = evaluate_condition(cond, &eval_ctx)
+                    .map_err(|e| format!("Failed to evaluate while_condition: {}", e))?;
+                if !should_continue {
+                    println!("  [Loop terminated: while_condition became false]");
+                    break;
+                }
+            }
+
+            // until条件チェック（trueなら終了）
+            if let Some(ref cond) = config.until_condition {
+                let should_stop = evaluate_condition(cond, &eval_ctx)
+                    .map_err(|e| format!("Failed to evaluate until_condition: {}", e))?;
+                if should_stop {
+                    println!("  [Loop terminated: until_condition became true]");
+                    break;
+                }
+            }
+
+            // 今回の結果を次回の previous_results として保存
+            // ExecutionResult.output をserde_json::Valueとして保存
+            previous_results = Some(
+                results
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.output.clone()))
+                    .collect(),
+            );
+        }
+
+        println!("  [Loop execution complete: {} iterations]", iteration);
+        Ok(results)
+    }
+
+    /// タスクの状態をリセットする（ループ実行時に使用）
+    fn reset_task_states(&mut self) {
+        use crate::types::Status;
+        for task in self.nodes.values_mut() {
+            task.status = Status::Pending;
+        }
     }
 
     /// if/else条件を評価してスキップするかどうかを判定する

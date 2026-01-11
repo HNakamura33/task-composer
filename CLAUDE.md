@@ -48,6 +48,7 @@ task-composer/
 ├── sample_if_else.json     # if/else条件付き実行サンプル
 ├── sample_subgraph.json    # サブグラフ実行サンプル
 ├── sample_nested_subgraph.json  # ネストしたサブグラフサンプル
+├── sample_loop.json        # ループ実行サンプル
 └── CLAUDE.md               # このファイル
 ```
 
@@ -60,11 +61,13 @@ task-composer/
 - `BashPermission` - Bash権限（allowed_commands, blocked_commands, require_confirmation）
 - `WritePermission` - 書き込み権限（max_file_size_mb, allowed_extensions）
 - `Status` - タスク状態（Pending, InProgress, Completed）
-- `DAG` - グラフ本体（nodes, edges, edges_rev, registry, config）
+- `DAG` - グラフ本体（nodes, edges, edges_rev, registry, config, loop_config）
 - `Config` - 設定（max_concurrent_tasks）
+- `LoopConfig` - ループ設定（max_iterations, while_condition, until_condition）
+- `LoopContext` - ループ実行コンテキスト（iteration, first, previous_results）
 - `ExecutionResult` - 実行結果（task_id, status, output）
 - `ExecutionStatus` - 実行ステータス（Success, Failed, Skipped）
-- `ResolveContext` - パス解決コンテキスト（previous_results, current_task）
+- `ResolveContext` - パス解決コンテキスト（previous_results, current_task, loop_context）
 
 ## 実装済み機能
 
@@ -100,6 +103,14 @@ task-composer/
 - ネストしたサブグラフのサポート（最大3レベル）
 - サブグラフ内でのパス参照（`$.{task_id}.output.{field}`）
 - 親DAGからサブグラフ結果を参照（`$.{subdag_task}.output.{inner_task}.output.{field}`）
+
+### ループ実行
+- `loop_config.max_iterations` - 最大繰り返し回数
+- `loop_config.while_condition` - 継続条件（trueの間ループ継続）
+- `loop_config.until_condition` - 終了条件（trueになったらループ終了）
+- `$.loop.iteration` - 現在のイテレーション番号（0始まり）
+- `$.loop.first` - 初回かどうか（true/false）
+- `$.loop.previous.{task_id}.output.{field}` - 前回イテレーションの結果参照
 
 ### MCP Server (Python)
 - `claude_code_query` - Claude Codeへのクエリ実行

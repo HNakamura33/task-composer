@@ -10,6 +10,7 @@
 //! - [`WritePermission`] - ファイル書き込み権限
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// タスクを表す構造体
 ///
@@ -282,4 +283,62 @@ impl Default for Config {
             max_concurrent_tasks: 4,
         }
     }
+}
+
+/// ループ設定
+///
+/// DAGを繰り返し実行するための設定を定義します。
+/// DAGの非巡回性を維持しつつ、外側でループを制御します。
+///
+/// # Example
+/// ```json
+/// {
+///   "loop_config": {
+///     "max_iterations": 5,
+///     "until_condition": "$.counter.output.value >= 10"
+///   }
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct LoopConfig {
+    /// 最大繰り返し回数
+    pub max_iterations: usize,
+    /// 継続条件（trueの間ループ継続）
+    #[serde(default)]
+    pub while_condition: Option<String>,
+    /// 終了条件（trueになったらループ終了）
+    #[serde(default)]
+    pub until_condition: Option<String>,
+}
+
+impl Default for LoopConfig {
+    fn default() -> Self {
+        LoopConfig {
+            max_iterations: 1,
+            while_condition: None,
+            until_condition: None,
+        }
+    }
+}
+
+/// ループ実行時のコンテキスト
+///
+/// ループ内で参照可能な情報を保持します。
+/// `$.loop.iteration`, `$.loop.first`, `$.loop.previous.*` で参照できます。
+///
+/// # 参照パス
+/// | 参照 | 意味 | 例 |
+/// |------|------|---|
+/// | `$.loop.iteration` | 現在のイテレーション番号（0始まり） | `0`, `1`, `2`... |
+/// | `$.loop.first` | 初回かどうか | `true` / `false` |
+/// | `$.loop.previous.{task_id}.output` | 前回の結果 | `$.loop.previous.counter.output.value` |
+#[derive(Debug, Clone)]
+pub struct LoopContext {
+    /// 現在のイテレーション番号（0始まり）
+    pub iteration: usize,
+    /// 初回かどうか
+    pub first: bool,
+    /// 前回イテレーションの結果（task_id -> JSON出力）
+    /// ExecutionResultの循環参照を避けるためserde_json::Valueで保持
+    pub previous_results: Option<HashMap<String, serde_json::Value>>,
 }
