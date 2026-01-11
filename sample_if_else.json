@@ -108,6 +108,31 @@
         },
         "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
       }
+    },
+    {
+      "task_id": "notify_error",
+      "name": "Send Error Notification",
+      "description": "エラー発生時に管理者へ通知を送信する",
+      "priority": 1,
+      "status": "Pending",
+      "prompt": "エラーが発生したため、管理者に通知を送信します",
+      "executor": "log",
+      "args": {
+        "message": "Sending error notification to admin..."
+      },
+      "dependencies": ["on_failure"],
+      "role": {
+        "role_id": "notifier",
+        "name": "Notifier",
+        "subagents": [],
+        "skills": [],
+        "description": "通知を送信するロール",
+        "tool_permissions": {
+          "bash": { "allowed_commands": [], "blocked_commands": [], "require_confirmation": [] },
+          "write": { "max_file_size_mb": 10, "allowed_extensions": [] }
+        },
+        "file_permissions": { "allowed_paths": [], "denied_paths": [], "read_only_paths": [] }
+      }
     }
   ]
 }
