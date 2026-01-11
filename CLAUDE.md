@@ -54,7 +54,7 @@ task-composer/
 
 ## 主要な構造体
 
-- `Task` - タスク情報（task_id, name, description, priority, status, prompt, executor, args, inputs, role, dependencies, if_condition, else_condition）
+- `Task` - タスク情報（task_id, name, description, priority, status, prompt, executor, args, inputs, role, dependencies, if_condition, else_condition, timeout_secs）
 - `Role` - ロール情報（role_id, name, subagents, skills, description, tool_permissions, file_permissions）
 - `FilePermission` - ファイル権限（allowed_paths, denied_paths, read_only_paths）
 - `ToolPermission` - ツール権限（bash, write）
@@ -62,7 +62,7 @@ task-composer/
 - `WritePermission` - 書き込み権限（max_file_size_mb, allowed_extensions）
 - `Status` - タスク状態（Pending, InProgress, Completed）
 - `DAG` - グラフ本体（nodes, edges, edges_rev, registry, config, loop_config）
-- `Config` - 設定（max_concurrent_tasks）
+- `Config` - 設定（max_concurrent_tasks, default_task_timeout_secs）
 - `LoopConfig` - ループ設定（max_iterations, while_condition, until_condition）
 - `LoopContext` - ループ実行コンテキスト（iteration, first, previous_results）
 - `ExecutionResult` - 実行結果（task_id, status, output）
@@ -111,6 +111,11 @@ task-composer/
 - `$.loop.iteration` - 現在のイテレーション番号（0始まり）
 - `$.loop.first` - 初回かどうか（true/false）
 - `$.loop.previous.{task_id}.output.{field}` - 前回イテレーションの結果参照
+
+### タイムアウト機能
+- `config.default_task_timeout_secs` - 全タスク共通のデフォルトタイムアウト（秒）
+- `task.timeout_secs` - タスク個別のタイムアウト（秒）、Configより優先
+- タイムアウト時はタスクが失敗扱いになる
 
 ### MCP Server (Python)
 - `claude_code_query` - Claude Codeへのクエリ実行

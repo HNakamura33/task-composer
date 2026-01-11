@@ -158,7 +158,7 @@ async fn run_execute_only(file: &str) {
     println!("Loaded {} tasks", dag.nodes.len());
 
     for (task_id, task) in &dag.nodes {
-        println!("  Task {}: {}", task_id, task.name);
+        println!("  Task {}: {}", task_id, task.display_name());
     }
 
     println!("\nEdges:");

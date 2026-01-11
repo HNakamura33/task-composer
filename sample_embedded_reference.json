@@ -5,7 +5,6 @@
       "name": "Fetch User Data",
       "description": "Fetch user information from API",
       "priority": 1,
-      "status": "Pending",
       "prompt": "Fetch user data from the database",
       "executor": "log",
       "args": {
@@ -31,14 +30,11 @@
       "name": "Generate Report",
       "description": "Generate a report based on user data",
       "priority": 2,
-      "status": "Pending",
       "prompt": "Create a summary report for the user",
       "executor": "log",
       "args": {
         "format": "markdown",
-        "title": "User Report"
-      },
-      "inputs": {
+        "title": "User Report",
         "previous_task_id": "$.1.output.task_id",
         "previous_message": "$.1.output.message",
         "summary": "Report based on: ${$.1.output.message}",
@@ -63,13 +59,10 @@
       "name": "Send Notification",
       "description": "Send notification to the user",
       "priority": 3,
-      "status": "Pending",
       "prompt": "Notify the user about the generated report",
       "executor": "log",
       "args": {
-        "channel": "email"
-      },
-      "inputs": {
+        "channel": "email",
         "task1_result": "$.1.output.message",
         "task2_result": "$.2.output.message",
         "combined": "Task1: ${$.1.output.message} | Task2: ${$.2.output.message}",

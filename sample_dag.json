@@ -5,7 +5,6 @@
       "name": "Setup Environment",
       "description": "Set up the development environment",
       "priority": 1,
-      "status": "Pending",
       "prompt": "Initialize the project and install dependencies",
       "executor": "log",
       "args": {"env": "development", "verbose": true},
@@ -39,7 +38,6 @@
       "name": "Design Database",
       "description": "Design the database schema",
       "priority": 2,
-      "status": "Pending",
       "prompt": "Create database models and relationships",
       "executor": "log",
       "args": {"schema_version": "v2"},
@@ -73,7 +71,6 @@
       "name": "Implement API",
       "description": "Implement REST API endpoints",
       "priority": 2,
-      "status": "Pending",
       "prompt": "Create API routes and handlers",
       "executor": "log",
       "args": {"api_version": "1.0"},
@@ -107,11 +104,9 @@
       "name": "Integration",
       "description": "Integrate API with database",
       "priority": 3,
-      "status": "Pending",
       "prompt": "Connect API endpoints to database",
       "executor": "log",
-      "args": {},
-      "inputs": {
+      "args": {
         "db_task_id": "$.2.output.task_id",
         "api_task_id": "$.3.output.task_id",
         "messages": ["$.2.output.message", "$.3.output.message"]

@@ -1,0 +1,13 @@
+{
+  "tasks": [
+    {
+      "task_id": "build",
+      "executor": "log"
+    },
+    {
+      "task_id": "test",
+      "executor": "log",
+      "dependencies": ["build"]
+    }
+  ]
+}

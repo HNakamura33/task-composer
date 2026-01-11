@@ -8,7 +8,6 @@
       "name": "Validate Input",
       "description": "入力データを検証し、結果を返す",
       "priority": 1,
-      "status": "Pending",
       "prompt": "入力データの検証を行います",
       "executor": "log",
       "args": {
@@ -37,7 +36,6 @@
       "name": "Process on Success",
       "description": "検証成功時の処理",
       "priority": 1,
-      "status": "Pending",
       "prompt": "検証が成功したので処理を続行します",
       "executor": "log",
       "args": {
@@ -63,7 +61,6 @@
       "name": "Handle Failure",
       "description": "検証失敗時のエラーハンドリング",
       "priority": 1,
-      "status": "Pending",
       "prompt": "検証が失敗したのでエラー処理を行います",
       "executor": "log",
       "args": {
@@ -89,7 +86,6 @@
       "name": "Finalize",
       "description": "成功処理後の最終処理",
       "priority": 1,
-      "status": "Pending",
       "prompt": "最終処理を行います",
       "executor": "log",
       "args": {
@@ -114,7 +110,6 @@
       "name": "Send Error Notification",
       "description": "エラー発生時に管理者へ通知を送信する",
       "priority": 1,
-      "status": "Pending",
       "prompt": "エラーが発生したため、管理者に通知を送信します",
       "executor": "log",
       "args": {

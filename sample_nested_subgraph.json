@@ -5,7 +5,6 @@
       "name": "Start",
       "description": "Start the nested pipeline",
       "priority": 1,
-      "status": "Pending",
       "prompt": "Starting...",
       "executor": "log",
       "args": {},
@@ -28,7 +27,6 @@
       "name": "Outer DAG",
       "description": "Outer sub-graph containing another sub-graph",
       "priority": 2,
-      "status": "Pending",
       "prompt": "Running outer DAG",
       "executor": "dag",
       "args": {
@@ -39,7 +37,6 @@
               "name": "Outer Task 1",
               "description": "First task in outer DAG",
               "priority": 1,
-              "status": "Pending",
               "prompt": "Outer task 1",
               "executor": "log",
               "args": {"level": "outer"},
@@ -62,7 +59,6 @@
               "name": "Inner DAG",
               "description": "Nested sub-graph inside outer DAG",
               "priority": 2,
-              "status": "Pending",
               "prompt": "Running inner DAG",
               "executor": "dag",
               "args": {
@@ -73,7 +69,6 @@
                       "name": "Inner Task 1",
                       "description": "Task in inner DAG",
                       "priority": 1,
-                      "status": "Pending",
                       "prompt": "Inner task 1",
                       "executor": "log",
                       "args": {"level": "inner"},
@@ -96,11 +91,9 @@
                       "name": "Inner Task 2",
                       "description": "Second task in inner DAG",
                       "priority": 2,
-                      "status": "Pending",
                       "prompt": "Inner task 2",
                       "executor": "log",
                       "args": {"level": "inner"},
-                      "inputs": {},
                       "dependencies": ["inner_task1"],
                       "role": {
                         "role_id": "role_inner",
@@ -138,11 +131,9 @@
               "name": "Outer Task 2",
               "description": "Final task in outer DAG",
               "priority": 3,
-              "status": "Pending",
               "prompt": "Outer task 2",
               "executor": "log",
               "args": {"level": "outer"},
-              "inputs": {},
               "dependencies": ["inner_dag"],
               "role": {
                 "role_id": "role_outer",
@@ -180,11 +171,9 @@
       "name": "End",
       "description": "End the nested pipeline",
       "priority": 3,
-      "status": "Pending",
       "prompt": "Ending...",
       "executor": "log",
-      "args": {},
-      "inputs": {
+      "args": {
         "outer_task1_id": "$.outer_dag.output.outer_task1.output.task_id",
         "inner_task2_id": "$.outer_dag.output.inner_dag.output.inner_task2.output.task_id",
         "inner_task2_status": "$.outer_dag.output.inner_dag.output.inner_task2.status"

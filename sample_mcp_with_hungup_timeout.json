@@ -65,6 +65,7 @@
       "priority": 2,
       "prompt": "Write docs",
       "executor": "mcp",
+      "timeout_secs": 120,
       "args": {
         "connection": {
           "type": "stdio",
@@ -84,7 +85,7 @@
           "options": {
             "cwd": "/Users/hirotaka/task-composer/experiment",
             "max_turns": 100,
-            "permission_mode": "default",
+            "permission_mode": "defualt",
             "allowed_tools": ["Read", "Write"]
           },
           "extra_options": {
