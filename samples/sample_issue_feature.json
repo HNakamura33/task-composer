@@ -1,0 +1,151 @@
+{
+  "tasks": [
+    {
+      "task_id": "design",
+      "name": "Design & Specification",
+      "description": "Create design document and specification for the new feature",
+      "executor": "github",
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Design] Authentication System - Specification",
+          "body": "## Overview\nDesign the authentication system architecture.\n\n## Deliverables\n- [ ] Architecture diagram\n- [ ] API specification\n- [ ] Data model design\n- [ ] Security considerations"
+        }
+      }
+    },
+    {
+      "task_id": "db_design",
+      "name": "Database Design",
+      "description": "Design database schema for authentication",
+      "executor": "github",
+      "dependencies": ["design"],
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Design] Database Schema for Auth",
+          "body": "## Overview\nDesign database schema for user authentication.\n\n## Parent Issue\nDepends on: #$.design.output.number\n\n## Tasks\n- [ ] User table design\n- [ ] Session table design\n- [ ] Migration scripts"
+        }
+      }
+    },
+    {
+      "task_id": "api_design",
+      "name": "API Design",
+      "description": "Design REST API endpoints for authentication",
+      "executor": "github",
+      "dependencies": ["design"],
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Design] API Endpoints for Auth",
+          "body": "## Overview\nDesign REST API endpoints.\n\n## Parent Issue\nDepends on: #$.design.output.number\n\n## Endpoints\n- [ ] POST /auth/login\n- [ ] POST /auth/logout\n- [ ] POST /auth/register\n- [ ] GET /auth/me"
+        }
+      }
+    },
+    {
+      "task_id": "ui_design",
+      "name": "UI Design",
+      "description": "Create UI mockups for authentication screens",
+      "executor": "github",
+      "dependencies": ["design"],
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Design] UI Mockups for Auth",
+          "body": "## Overview\nCreate UI mockups for authentication.\n\n## Parent Issue\nDepends on: #$.design.output.number\n\n## Screens\n- [ ] Login page\n- [ ] Registration page\n- [ ] Password reset page"
+        }
+      }
+    },
+    {
+      "task_id": "db_impl",
+      "name": "Database Implementation",
+      "description": "Implement database schema and migrations",
+      "executor": "github",
+      "dependencies": ["db_design"],
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Impl] Database Migration for Auth",
+          "body": "## Overview\nImplement database migrations.\n\n## Parent Issue\nDepends on: #$.db_design.output.number\n\n## Tasks\n- [ ] Create migration files\n- [ ] Add indexes\n- [ ] Seed data for testing"
+        }
+      }
+    },
+    {
+      "task_id": "api_impl",
+      "name": "API Implementation",
+      "description": "Implement REST API endpoints",
+      "executor": "github",
+      "dependencies": ["api_design"],
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Impl] API Endpoints for Auth",
+          "body": "## Overview\nImplement REST API endpoints.\n\n## Parent Issue\nDepends on: #$.api_design.output.number\n\n## Tasks\n- [ ] Implement controllers\n- [ ] Add authentication middleware\n- [ ] Unit tests"
+        }
+      }
+    },
+    {
+      "task_id": "ui_impl",
+      "name": "UI Implementation",
+      "description": "Implement UI components for authentication",
+      "executor": "github",
+      "dependencies": ["ui_design"],
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Impl] UI Components for Auth",
+          "body": "## Overview\nImplement UI components.\n\n## Parent Issue\nDepends on: #$.ui_design.output.number\n\n## Tasks\n- [ ] Login form component\n- [ ] Registration form component\n- [ ] Form validation"
+        }
+      }
+    },
+    {
+      "task_id": "integration_test",
+      "name": "Integration Testing",
+      "description": "Run integration tests for the complete authentication flow",
+      "executor": "github",
+      "dependencies": ["db_impl", "api_impl", "ui_impl"],
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Test] Integration Tests for Auth",
+          "body": "## Overview\nIntegration testing for authentication system.\n\n## Dependencies\n- DB: #$.db_impl.output.number\n- API: #$.api_impl.output.number\n- UI: #$.ui_impl.output.number\n\n## Test Cases\n- [ ] User registration flow\n- [ ] Login/logout flow\n- [ ] Session management\n- [ ] Error handling"
+        }
+      }
+    },
+    {
+      "task_id": "documentation",
+      "name": "Documentation",
+      "description": "Write documentation for the authentication system",
+      "executor": "github",
+      "dependencies": ["integration_test"],
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Docs] Authentication System Documentation",
+          "body": "## Overview\nWrite comprehensive documentation.\n\n## Parent Issue\nDepends on: #$.integration_test.output.number\n\n## Sections\n- [ ] API reference\n- [ ] User guide\n- [ ] Security best practices"
+        }
+      }
+    }
+  ],
+  "config": {
+    "max_concurrent_tasks": 3,
+    "default_task_timeout_secs": 60
+  }
+}
