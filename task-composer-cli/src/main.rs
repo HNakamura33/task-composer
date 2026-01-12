@@ -57,7 +57,7 @@ async fn main() {
         }
         None => {
             // 後方互換性: コマンドなしの場合は従来通り実行のみ
-            let file = cli.file.unwrap_or_else(|| "sample_dag.json".to_string());
+            let file = cli.file.unwrap_or_else(|| "samples/sample_dag.json".to_string());
             run_execute_only(&file).await;
         }
     }
