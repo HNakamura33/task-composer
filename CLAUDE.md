@@ -21,40 +21,51 @@ DAGベースのタスク管理ライブラリ（Rust学習プロジェクト）
 
 ```
 task-composer/
-├── Cargo.toml              # 依存関係: serde, serde_json, tokio, async-trait, regex等
-├── LICENSE                 # Apache 2.0
-├── src/
-│   ├── main.rs             # CLIエントリーポイント
-│   ├── types.rs            # 型定義（Task, Role, Config等）
-│   ├── path_resolver.rs    # パス参照・埋め込み参照の解決
-│   ├── dag/
-│   │   ├── mod.rs          # DAG実装（非同期実行含む）
-│   │   └── tests.rs        # DAGテスト
-│   ├── task_executor/
-│   │   ├── mod.rs          # Executorトレイト・レジストリ
-│   │   ├── log_executor.rs # ログ出力Executor
-│   │   └── mcp_executor.rs # MCP Executor
-│   └── conflict/
-│       ├── mod.rs          # 競合検出
-│       └── tests.rs
+├── Cargo.toml                   # ワークスペース定義
+├── LICENSE                      # Apache 2.0
+├── README.md
+├── CLAUDE.md                    # このファイル
+├── task-composer-core/          # コアライブラリ
+│   ├── Cargo.toml
+│   └── src/
+│       ├── lib.rs
+│       ├── types.rs             # 型定義（Task, Role, Config等）
+│       ├── path_resolver.rs     # パス参照・埋め込み参照の解決
+│       ├── dag/                 # DAG実装
+│       │   ├── mod.rs
+│       │   └── tests.rs
+│       ├── task_executor/       # Executor実装
+│       │   ├── mod.rs
+│       │   ├── log_executor.rs
+│       │   ├── mcp_executor.rs
+│       │   └── dag_executor.rs
+│       └── analysis/            # 静的解析
+│           ├── mod.rs
+│           ├── dag_analysis.rs
+│           ├── task_validation.rs
+│           └── conflict/
+├── task-composer-cli/           # CLIツール
+│   ├── Cargo.toml
+│   └── src/main.rs
+├── task-composer-ui/            # Dioxus UI（Desktop/Web/TUI）
+│   ├── Cargo.toml
+│   ├── Dioxus.toml
+│   └── src/
 ├── mcp_servers/
 │   └── claude_code_mcp/
-│       ├── main.py         # FastMCPサーバー
+│       ├── main.py              # FastMCPサーバー
 │       └── pyproject.toml
-├── sample_dag.json         # 基本サンプル
-├── sample_mcp_dag.json     # MCP連携サンプル
-├── sample_embedded_reference.json  # 埋め込み参照サンプル
-├── sample_mcp_with_role.json       # Role付きMCPサンプル
-├── sample_if_else.json     # if/else条件付き実行サンプル
-├── sample_subgraph.json    # サブグラフ実行サンプル
-├── sample_nested_subgraph.json  # ネストしたサブグラフサンプル
-├── sample_loop.json        # ループ実行サンプル
-└── CLAUDE.md               # このファイル
+└── samples/                     # サンプルDAGファイル
+    ├── sample_minimal.json      # 最小構成サンプル
+    ├── sample_dag.json          # 基本サンプル
+    ├── sample_mcp_dag.json      # MCP連携サンプル
+    ├── sample_loop.json         # ループ実行サンプル
+    └── ...
 ```
 
 ## 主要な構造体
 
-- `Task` - タスク情報（task_id, name, description, priority, status, prompt, executor, args, inputs, role, dependencies, if_condition, else_condition, timeout_secs）
+- `Task` - タスク情報（必須: task_id, executor / オプショナル: name, description, priority, prompt, role, dependencies, args, if_condition, else_condition, timeout_secs）
 - `Role` - ロール情報（role_id, name, subagents, skills, description, tool_permissions, file_permissions）
 - `FilePermission` - ファイル権限（allowed_paths, denied_paths, read_only_paths）
 - `ToolPermission` - ツール権限（bash, write）
@@ -125,10 +136,16 @@ task-composer/
 ## コマンド
 
 ```bash
-cargo test              # テスト実行
-cargo run               # sample_dag.json を読み込んで実行
-cargo run -- file.json  # 指定したJSONを実行
-cargo doc --open        # ドキュメント生成
+# 開発時
+cargo test                                  # テスト実行
+cargo run -p task-composer-cli              # samples/sample_dag.json を読み込んで実行
+cargo run -p task-composer-cli -- file.json # 指定したJSONを実行
+cargo doc --open                            # ドキュメント生成
+
+# CLIインストール後
+task-composer analyze file.json             # 静的解析のみ
+task-composer run file.json                 # 静的解析+実行
+task-composer exec file.json                # 実行のみ（静的解析なし）
 ```
 
 ## コーディング規約

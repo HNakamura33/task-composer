@@ -131,6 +131,19 @@ async fn main() {
 
 ## DAG JSON形式
 
+### 最小構成
+
+```json
+{
+  "tasks": [
+    { "task_id": "build", "executor": "log" },
+    { "task_id": "test", "executor": "log", "dependencies": ["build"] }
+  ]
+}
+```
+
+### 完全な例
+
 ```json
 {
   "tasks": [
@@ -139,7 +152,6 @@ async fn main() {
       "name": "Setup Environment",
       "description": "開発環境のセットアップ",
       "priority": 1,
-      "status": "Pending",
       "prompt": "プロジェクトを初期化して依存関係をインストール",
       "executor": "log",
       "args": {"env": "development"},
@@ -172,8 +184,7 @@ async fn main() {
       "task_id": "2",
       "name": "Build",
       "executor": "log",
-      "args": {},
-      "inputs": {
+      "args": {
         "setup_result": "$.1.output.message"
       },
       "dependencies": ["1"]
@@ -188,17 +199,26 @@ async fn main() {
 
 ### 主要フィールド
 
+#### 必須フィールド
+
 | フィールド | 型 | 説明 |
 |-----------|-----|------|
 | `task_id` | String | タスクの一意な識別子 |
-| `name` | String | タスク名 |
 | `executor` | String | 使用するExecutorの名前（`log`, `mcp`, `dag`） |
-| `args` | JSON | タスクに渡す静的な引数 |
-| `inputs` | JSON | 依存タスクの出力を参照するパス定義 |
+
+#### オプショナルフィールド
+
+| フィールド | 型 | 説明 |
+|-----------|-----|------|
+| `name` | String? | タスクの表示名（省略時はtask_idを使用） |
+| `description` | String? | タスクの詳細説明 |
+| `priority` | u8 | 優先度（0-255、デフォルト: 0） |
+| `prompt` | String? | タスク実行時のプロンプト |
+| `args` | JSON | タスクに渡す引数（パス参照 `$.task_id.output.*` を含む） |
 | `dependencies` | Array | 依存するタスクIDのリスト |
 | `if` | String? | 実行条件（trueなら実行、falseならスキップ） |
 | `else` | String? | 実行条件（trueならスキップ、falseなら実行） |
-| `role` | Object | ロール定義（権限を含む） |
+| `role` | Object? | ロール定義（省略時は全権限許可） |
 | `timeout_secs` | u64? | タスクのタイムアウト（秒）。省略時はconfigのデフォルト値を使用 |
 
 ## パス参照構文
@@ -506,15 +526,11 @@ task-composer/
 ├── LICENSE                      # Apache 2.0
 ├── README.md
 ├── CLAUDE.md                    # Claude向け指示
-├── sample_dag.json              # 基本サンプル
-├── sample_mcp_dag.json          # MCP連携サンプル
-├── sample_embedded_reference.json  # 埋め込み参照サンプル
-├── sample_mcp_with_role.json    # Role付きMCPサンプル
-├── sample_if_else.json          # if/else条件付き実行サンプル
-├── sample_subgraph.json         # サブグラフ実行サンプル
-├── sample_nested_subgraph.json  # ネストしたサブグラフサンプル
-├── sample_loop.json             # ループ実行サンプル
-├── sample_analysis_test.json    # 静的解析テスト用
+├── samples/                     # サンプルDAGファイル
+│   ├── sample_dag.json
+│   ├── sample_mcp_dag.json
+│   ├── sample_loop.json
+│   └── ...
 ├── task-composer-core/          # コアライブラリ
 │   ├── Cargo.toml
 │   └── src/
@@ -524,10 +540,6 @@ task-composer/
 │       ├── dag/                 # DAG実装
 │       ├── task_executor/       # Executor実装
 │       └── analysis/            # 静的解析
-│           ├── mod.rs           # StaticAnalyzer
-│           ├── dag_analysis.rs  # DAG構造解析
-│           ├── task_validation.rs # タスク検証
-│           └── conflict/        # コンフリクト検出
 ├── task-composer-cli/           # CLIツール
 │   ├── Cargo.toml
 │   └── src/main.rs
@@ -543,17 +555,24 @@ task-composer/
 
 ## サンプルファイル
 
+サンプルファイルは `samples/` ディレクトリに配置されています。
+
 | ファイル | 説明 |
 |----------|------|
-| `sample_dag.json` | 基本的なDAG（LogExecutor使用） |
-| `sample_mcp_dag.json` | MCP連携によるコード分析・README生成 |
-| `sample_embedded_reference.json` | 埋め込み参照（`${...}`）のデモ |
-| `sample_mcp_with_role.json` | Role情報をMCPに渡すデモ |
-| `sample_if_else.json` | if/else条件付き実行のデモ |
-| `sample_subgraph.json` | サブグラフ実行のデモ |
-| `sample_nested_subgraph.json` | ネストしたサブグラフのデモ（2レベル） |
-| `sample_loop.json` | ループ実行のデモ |
-| `sample_analysis_test.json` | 静的解析のエラー検出テスト用 |
+| `samples/sample_minimal.json` | 最小構成（task_idとexecutorのみ） |
+| `samples/sample_dag.json` | 基本的なDAG（LogExecutor使用） |
+| `samples/sample_mcp_dag.json` | MCP連携によるコード分析・README生成 |
+| `samples/sample_embedded_reference.json` | 埋め込み参照（`${...}`）のデモ |
+| `samples/sample_mcp_with_role.json` | Role情報をMCPに渡すデモ |
+| `samples/sample_mcp_with_hungup_timeout.json` | タイムアウト機能のデモ |
+| `samples/sample_if_else.json` | if/else条件付き実行のデモ |
+| `samples/sample_subgraph.json` | サブグラフ実行のデモ |
+| `samples/sample_nested_subgraph.json` | ネストしたサブグラフのデモ（2レベル） |
+| `samples/sample_loop.json` | ループ実行のデモ |
+| `samples/sample_analysis_test.json` | 静的解析のエラー検出テスト用 |
+| `samples/sample_error_test.json` | エラー検出テスト用 |
+| `samples/large_dag.json` | パフォーマンステスト用（大規模DAG） |
+| `samples/huge_dag.json` | パフォーマンステスト用（超大規模DAG） |
 
 ## ライセンス
 

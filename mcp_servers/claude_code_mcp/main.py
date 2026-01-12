@@ -279,16 +279,12 @@ def parse_serve_args(args: list[str]) -> tuple[str, int]:
 async def main():
     if len(sys.argv) < 2:
         print("使用方法:")
-        print("  uv run main.py serve                    # stdio MCPサーバーとして起動")
-        print(
-            "  uv run main.py serve --http             # HTTP MCPサーバーとして起動 (port 8000)"
-        )
+        print("  uv run main.py serve  # stdio MCPサーバーとして起動")
+        print("  uv run main.py serve --http # HTTP MCPサーバーとして起動 (port 8000)")
         print(
             "  uv run main.py serve --http --port 3000 # HTTP MCPサーバーとして起動 (port 3000)"
         )
-        print(
-            "  uv run main.py <request.json>           # JSONファイルからリクエスト実行"
-        )
+        print("  uv run main.py <request.json> # JSONファイルからリクエスト実行")
         print("")
         print("JSONファイルの形式:")
         print(
