@@ -1,0 +1,71 @@
+{
+  "tasks": [
+    {
+      "task_id": "create_issue",
+      "name": "Create Issue",
+      "description": "Create a new issue on GitHub",
+      "executor": "github",
+      "args": {
+        "owner": "example-org",
+        "repo": "example-repo",
+        "action": {
+          "type": "create_issue",
+          "title": "Bug: Application crashes on startup",
+          "body": "## Description\nThe application crashes when starting up.\n\n## Steps to reproduce\n1. Run the application\n2. Observe crash\n\n## Expected behavior\nApplication should start normally.",
+          "labels": ["bug", "priority:high"],
+          "assignees": ["developer1"]
+        }
+      }
+    },
+    {
+      "task_id": "list_open_issues",
+      "name": "List Open Issues",
+      "description": "List all open issues in the repository",
+      "executor": "github",
+      "args": {
+        "owner": "example-org",
+        "repo": "example-repo",
+        "action": {
+          "type": "list_issues",
+          "state": "open",
+          "per_page": 10
+        }
+      }
+    },
+    {
+      "task_id": "create_pr",
+      "name": "Create Pull Request",
+      "description": "Create a pull request for the fix",
+      "executor": "github",
+      "args": {
+        "owner": "example-org",
+        "repo": "example-repo",
+        "action": {
+          "type": "create_pr",
+          "title": "Fix: Resolve startup crash issue",
+          "head": "feature/fix-startup-crash",
+          "base": "main",
+          "body": "## Summary\nThis PR fixes the startup crash issue.\n\n## Changes\n- Fixed initialization order\n- Added error handling\n\nCloses #123",
+          "draft": false
+        }
+      },
+      "dependencies": ["create_issue"]
+    },
+    {
+      "task_id": "request_review",
+      "name": "Request Review",
+      "description": "Request reviewers for the pull request",
+      "executor": "github",
+      "args": {
+        "owner": "example-org",
+        "repo": "example-repo",
+        "action": {
+          "type": "request_review",
+          "number": "$.create_pr.output.number",
+          "reviewers": ["reviewer1", "reviewer2"]
+        }
+      },
+      "dependencies": ["create_pr"]
+    }
+  ]
+}
