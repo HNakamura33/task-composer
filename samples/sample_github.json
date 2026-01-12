@@ -6,14 +6,12 @@
       "description": "Create a new issue on GitHub",
       "executor": "github",
       "args": {
-        "owner": "example-org",
-        "repo": "example-repo",
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
         "action": {
           "type": "create_issue",
-          "title": "Bug: Application crashes on startup",
-          "body": "## Description\nThe application crashes when starting up.\n\n## Steps to reproduce\n1. Run the application\n2. Observe crash\n\n## Expected behavior\nApplication should start normally.",
-          "labels": ["bug", "priority:high"],
-          "assignees": ["developer1"]
+          "title": "Test Issue from task-composer",
+          "body": "## Description\nThis is a test issue created by task-composer.\n\n## Purpose\nTesting the GitHubExecutor functionality."
         }
       }
     },
@@ -23,8 +21,8 @@
       "description": "List all open issues in the repository",
       "executor": "github",
       "args": {
-        "owner": "example-org",
-        "repo": "example-repo",
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
         "action": {
           "type": "list_issues",
           "state": "open",
@@ -33,39 +31,35 @@
       }
     },
     {
-      "task_id": "create_pr",
-      "name": "Create Pull Request",
-      "description": "Create a pull request for the fix",
+      "task_id": "get_created_issue",
+      "name": "Get Created Issue",
+      "description": "Get details of the created issue",
       "executor": "github",
       "args": {
-        "owner": "example-org",
-        "repo": "example-repo",
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
         "action": {
-          "type": "create_pr",
-          "title": "Fix: Resolve startup crash issue",
-          "head": "feature/fix-startup-crash",
-          "base": "main",
-          "body": "## Summary\nThis PR fixes the startup crash issue.\n\n## Changes\n- Fixed initialization order\n- Added error handling\n\nCloses #123",
-          "draft": false
+          "type": "get_issue",
+          "number": "$.create_issue.output.number"
         }
       },
       "dependencies": ["create_issue"]
     },
     {
-      "task_id": "request_review",
-      "name": "Request Review",
-      "description": "Request reviewers for the pull request",
+      "task_id": "close_issue",
+      "name": "Close Issue",
+      "description": "Close the created issue",
       "executor": "github",
       "args": {
-        "owner": "example-org",
-        "repo": "example-repo",
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
         "action": {
-          "type": "request_review",
-          "number": "$.create_pr.output.number",
-          "reviewers": ["reviewer1", "reviewer2"]
+          "type": "close_issue",
+          "number": "$.create_issue.output.number",
+          "reason": "completed"
         }
       },
-      "dependencies": ["create_pr"]
+      "dependencies": ["create_issue", "get_created_issue"]
     }
   ]
 }

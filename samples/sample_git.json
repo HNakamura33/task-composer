@@ -8,8 +8,8 @@
       "args": {
         "action": {
           "type": "clone",
-          "url": "https://github.com/example/repo.git",
-          "path": "/tmp/my-repo",
+          "url": "https://github.com/HNakamura33/task-composer-test.git",
+          "path": "/tmp/task-composer-test",
           "branch": "main"
         }
       }
@@ -22,43 +22,25 @@
       "args": {
         "action": {
           "type": "status",
-          "path": "/tmp/my-repo",
+          "path": "/tmp/task-composer-test",
           "include_untracked": true
         }
       },
       "dependencies": ["clone_repo"]
     },
     {
-      "task_id": "create_branch",
-      "name": "Create Feature Branch",
-      "description": "Create and checkout a new feature branch",
+      "task_id": "list_branches",
+      "name": "List Branches",
+      "description": "List all branches in the repository",
       "executor": "git",
       "args": {
         "action": {
-          "type": "create_branch",
-          "path": "/tmp/my-repo",
-          "name": "feature/new-feature",
-          "checkout": true
+          "type": "list_branches",
+          "path": "/tmp/task-composer-test",
+          "branch_type": "all"
         }
       },
       "dependencies": ["check_status"]
-    },
-    {
-      "task_id": "commit_changes",
-      "name": "Commit Changes",
-      "description": "Commit all changes with a message",
-      "executor": "git",
-      "args": {
-        "action": {
-          "type": "commit",
-          "path": "/tmp/my-repo",
-          "message": "Add new feature",
-          "add_all": true,
-          "author_name": "Developer",
-          "author_email": "dev@example.com"
-        }
-      },
-      "dependencies": ["create_branch"]
     },
     {
       "task_id": "show_log",
@@ -68,11 +50,11 @@
       "args": {
         "action": {
           "type": "log",
-          "path": "/tmp/my-repo",
+          "path": "/tmp/task-composer-test",
           "max_count": 5
         }
       },
-      "dependencies": ["commit_changes"]
+      "dependencies": ["list_branches"]
     }
   ]
 }
