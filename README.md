@@ -385,6 +385,58 @@ Model Context Protocolを通じて外部MCPサーバーと連携します。
 }
 ```
 
+### BashExecutor
+
+シェルコマンドを実行します。コマンドの出力がJSON形式の場合、自動的にパースして`parsed`フィールドに格納します。
+
+```json
+{
+  "executor": "bash",
+  "args": {
+    "command": "echo '{\"status\": \"success\"}'",
+    "cwd": "/path/to/workdir",
+    "timeout_secs": 60,
+    "shell": "sh"
+  }
+}
+```
+
+#### パラメータ
+
+| パラメータ | 説明 | デフォルト |
+|-----------|------|-----------|
+| `command` | 実行するシェルコマンド（必須） | - |
+| `cwd` | 作業ディレクトリ | カレントディレクトリ |
+| `timeout_secs` | タイムアウト（秒） | 300 |
+| `shell` | 使用するシェル | `sh` |
+
+#### 出力形式
+
+```json
+{
+  "exit_code": 0,
+  "stdout": "{\"status\": \"success\"}",
+  "stderr": "",
+  "success": true,
+  "parsed": { "status": "success" }
+}
+```
+
+- `parsed`: stdoutがJSON形式の場合、パース結果が格納される（パース失敗時は`null`）
+- 他のタスクから `$.task_id.output.parsed.field` で参照可能
+
+#### 使用例：パターンマッチング
+
+```json
+{
+  "task_id": "check",
+  "executor": "bash",
+  "args": {
+    "command": "echo '${$.prev.output}' | grep -q 'SUCCESS' && echo '{\"matched\": true}' || echo '{\"matched\": false}'"
+  }
+}
+```
+
 ### GitExecutor
 
 ローカルGitリポジトリの操作を実行します。clone、commit、branch操作など基本的なGit操作をサポートします。
@@ -524,6 +576,65 @@ GitHub APIを通じてIssueやPull Requestを操作します。環境変数`GITH
 ```
 
 初回イテレーション（`$.loop.first == true`）では、`$.loop.previous.*`は`null`を返します。
+
+### Ralph Loopパターン
+
+[Ralph Loop](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/ralph-loop)は、AIエージェントに反復的な自己改善ループを実行させるパターンです。task-composerの`loop_config`と`McpExecutor`を組み合わせることで実現できます。
+
+#### 特徴
+
+| Ralph Loopの特徴 | task-composerでの実現方法 |
+|-----------------|-------------------------|
+| プロンプト不変 | 同じtask定義がループで繰り返し実行される |
+| ファイル永続性 | Claude Codeがファイルに書き込み、次のイテレーションで参照 |
+| 自己参照 | `$.loop.previous.*` で前回の結果を参照 |
+| 完了条件 | `until_condition` で特定の出力を検出して終了 |
+| 最大反復数 | `max_iterations` で無限ループを防止 |
+
+#### 使用例
+
+```json
+{
+  "loop_config": {
+    "max_iterations": 10,
+    "until_condition": "$.improve.output.all_tests_passed == true"
+  },
+  "tasks": [
+    {
+      "task_id": "improve",
+      "executor": "mcp",
+      "args": {
+        "connection": { "type": "stdio", "command": "uv", "args": ["..."] },
+        "tool": "claude_code_query",
+        "arguments": {
+          "prompt": "Iteration: ${$.loop.iteration}\nPrevious result: ${$.loop.previous.improve.output}\n\n1. Run tests\n2. Fix failures\n3. Output { \"all_tests_passed\": true } when done",
+          "options": {
+            "max_turns": 50,
+            "allowed_tools": ["Read", "Write", "Edit", "Bash"]
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+#### 適切なユースケース
+
+**推奨：**
+- テスト駆動開発（テスト実行→失敗修正→再実行）
+- コード品質改善（lint→修正→再lint）
+- 段階的な機能実装（実装→テスト→改善）
+- 自動検証可能なタスク
+
+**非推奨：**
+- 人間の判断が必要なタスク
+- 明確な完了条件がないタスク
+- 本番環境でのデバッグ
+
+#### サンプル
+
+`samples/sample_ralph_loop.json` を参照してください。
 
 ### タイムアウト機能
 
@@ -667,6 +778,8 @@ task-composer/
 | `samples/sample_subgraph.json` | サブグラフ実行のデモ |
 | `samples/sample_nested_subgraph.json` | ネストしたサブグラフのデモ（2レベル） |
 | `samples/sample_loop.json` | ループ実行のデモ |
+| `samples/sample_ralph_loop.json` | Ralph Loopパターンのデモ（MCP連携） |
+| `samples/sample_bash.json` | BashExecutorの基本操作デモ |
 | `samples/sample_git.json` | GitExecutorの基本操作デモ |
 | `samples/sample_git_all_operations.json` | GitExecutorの全操作デモ |
 | `samples/sample_github.json` | GitHubExecutorの基本操作デモ |

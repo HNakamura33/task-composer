@@ -1,0 +1,53 @@
+{
+  "description": "Ralph Loop pattern - Iterative self-improvement loop for AI agents. Uses /tmp/ralph_loop_test as test project.",
+  "loop_config": {
+    "max_iterations": 20,
+    "until_condition": "$.check_completion.output.parsed.completed == true"
+  },
+  "tasks": [
+    {
+      "task_id": "improve",
+      "name": "Iterative Code Improvement",
+      "executor": "mcp",
+      "prompt": "Implement a mini language interpreter step by step using TDD.",
+      "args": {
+        "connection": {
+          "type": "stdio",
+          "command": "uv",
+          "args": [
+            "run",
+            "--directory",
+            "./mcp_servers/claude_code_mcp",
+            "main.py",
+            "serve"
+          ],
+          "env": {}
+        },
+        "tool": "claude_code_query",
+        "arguments": {
+          "prompt": "You are in a Ralph Loop - an iterative self-improvement cycle.\n\nIteration: ${$.loop.iteration}\nFirst iteration: ${$.loop.first}\n\nYou are building a mini language interpreter in Rust using TDD.\nThe code is in src/lib.rs with todo!() placeholders.\n\nYour task:\n1. Run: cargo test\n2. Pick ONE failing test group to fix (Lexer → Parser → Interpreter order recommended)\n3. Implement the missing functionality to pass those tests\n4. Run tests again to verify\n5. If more tests fail, continue in next iteration\n\nPrevious iteration result: ${$.loop.previous.improve.output}\n\nIMPORTANT:\n- When ALL 23 tests pass, output 'ALL_TESTS_PASSED'\n- If tests still fail, output 'TESTS_FAILING' and summarize remaining failures",
+          "options": {
+            "model": "haiku",
+            "cwd": "/tmp/ralph_loop_test",
+            "max_turns": 10,
+            "allowed_tools": ["Read", "Write", "Edit", "Grep", "Glob", "Bash"],
+            "permission_mode": "acceptEdits"
+          }
+        }
+      },
+      "dependencies": []
+    },
+    {
+      "task_id": "check_completion",
+      "name": "Check if all tests passed",
+      "executor": "bash",
+      "args": {
+        "command": "echo '${$.improve.output.content[0].text}' | grep -q 'ALL_TESTS_PASSED' && echo '{\"completed\": true}' || echo '{\"completed\": false}'"
+      },
+      "dependencies": ["improve"]
+    }
+  ],
+  "config": {
+    "max_concurrent_tasks": 1
+  }
+}

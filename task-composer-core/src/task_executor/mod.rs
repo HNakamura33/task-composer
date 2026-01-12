@@ -11,6 +11,7 @@
 //! registry.register(Box::new(LogExecutor::new()));
 //! ```
 
+pub mod bash_executor;
 pub mod dag_executor;
 pub mod data_executor;
 pub mod git_executor;
@@ -22,6 +23,7 @@ use std::collections::HashMap;
 use crate::types::Task;
 use async_trait::async_trait;
 
+pub use bash_executor::BashExecutor;
 pub use dag_executor::DagExecutor;
 pub use data_executor::DataExecutor;
 pub use git_executor::GitExecutor;

@@ -1,0 +1,44 @@
+{
+  "description": "BashExecutor sample - Shell command execution",
+  "tasks": [
+    {
+      "task_id": "get_date",
+      "name": "Get current date",
+      "executor": "bash",
+      "args": {
+        "command": "date '+%Y-%m-%d %H:%M:%S'"
+      }
+    },
+    {
+      "task_id": "list_files",
+      "name": "List files in current directory",
+      "executor": "bash",
+      "args": {
+        "command": "ls -la | head -10"
+      },
+      "dependencies": ["get_date"]
+    },
+    {
+      "task_id": "json_output",
+      "name": "Generate JSON output",
+      "executor": "bash",
+      "args": {
+        "command": "echo '{\"status\": \"success\", \"timestamp\": \"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\"}'"
+      },
+      "dependencies": ["list_files"]
+    },
+    {
+      "task_id": "use_parsed_json",
+      "name": "Use parsed JSON from previous task",
+      "executor": "log",
+      "args": {
+        "status": "$.json_output.output.parsed.status",
+        "timestamp": "$.json_output.output.parsed.timestamp"
+      },
+      "dependencies": ["json_output"]
+    }
+  ],
+  "config": {
+    "max_concurrent_tasks": 1
+  }
+}

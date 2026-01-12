@@ -109,6 +109,8 @@ task-composer/
 - `DagExecutor` - サブグラフ（入れ子DAG）実行
 - `GitExecutor` - Gitリポジトリ操作（clone, commit, branch, push等）
 - `GitHubExecutor` - GitHub API連携（Issue, PR操作）
+- `BashExecutor` - シェルコマンド実行（JSON出力自動パース対応）
+- `DataExecutor` - 定数データ出力
 - `ExecutorRegistry` - Executor管理
 
 ### サブグラフ実行
