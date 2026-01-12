@@ -385,6 +385,104 @@ Model Context Protocolを通じて外部MCPサーバーと連携します。
 }
 ```
 
+### GitExecutor
+
+ローカルGitリポジトリの操作を実行します。clone、commit、branch操作など基本的なGit操作をサポートします。
+
+```json
+{
+  "executor": "git",
+  "args": {
+    "action": {
+      "type": "clone",
+      "url": "https://github.com/user/repo.git",
+      "path": "/tmp/my-repo",
+      "branch": "main"
+    }
+  }
+}
+```
+
+#### サポートする操作
+
+| 操作 | 説明 | 必須パラメータ |
+|------|------|---------------|
+| `clone` | リポジトリをクローン | `url`, `path` |
+| `open` | 既存リポジトリを開く | `path` |
+| `init` | 新規リポジトリを初期化 | `path` |
+| `status` | ステータス確認 | `path` |
+| `diff` | 変更差分を表示 | `path` |
+| `log` | コミット履歴を表示 | `path` |
+| `commit` | コミット作成 | `path`, `message` |
+| `create_branch` | ブランチ作成 | `path`, `name` |
+| `checkout` | ブランチ切り替え | `path`, `branch` |
+| `list_branches` | ブランチ一覧 | `path` |
+| `delete_branch` | ブランチ削除 | `path`, `name` |
+| `fetch` | リモートから取得 | `path` |
+| `push` | リモートへプッシュ | `path` |
+
+#### 認証オプション
+
+```json
+{
+  "action": {
+    "type": "clone",
+    "url": "git@github.com:user/repo.git",
+    "path": "/tmp/repo",
+    "auth": {
+      "type": "ssh_agent"
+    }
+  }
+}
+```
+
+| 認証タイプ | 説明 |
+|-----------|------|
+| `ssh_agent` | SSH Agentを使用 |
+| `ssh_key` | SSHキーファイルを指定（`private_key_path`, `passphrase`） |
+| `user_password` | ユーザー名/パスワード認証（`username`, `password`） |
+
+### GitHubExecutor
+
+GitHub APIを通じてIssueやPull Requestを操作します。環境変数`GITHUB_TOKEN`で認証するか、argsで`token`を指定します。
+
+```json
+{
+  "executor": "github",
+  "args": {
+    "owner": "user",
+    "repo": "repository",
+    "action": {
+      "type": "create_issue",
+      "title": "Bug report",
+      "body": "Description of the issue"
+    }
+  }
+}
+```
+
+#### Issue操作
+
+| 操作 | 説明 | 必須パラメータ |
+|------|------|---------------|
+| `create_issue` | Issue作成 | `title` |
+| `get_issue` | Issue詳細取得 | `number` |
+| `list_issues` | Issue一覧 | - |
+| `update_issue` | Issue更新 | `number` |
+| `close_issue` | Issueクローズ | `number` |
+| `create_comment` | コメント追加 | `number`, `body` |
+| `delete_comment` | コメント削除 | `comment_id` |
+
+#### Pull Request操作
+
+| 操作 | 説明 | 必須パラメータ |
+|------|------|---------------|
+| `create_pr` | PR作成 | `title`, `head`, `base` |
+| `get_pr` | PR詳細取得 | `number` |
+| `list_prs` | PR一覧 | - |
+| `merge_pr` | PRマージ | `number` |
+| `request_review` | レビュー依頼 | `number` |
+
 ### ループ実行
 
 `loop_config`を使用してDAGを繰り返し実行できます。
@@ -569,6 +667,10 @@ task-composer/
 | `samples/sample_subgraph.json` | サブグラフ実行のデモ |
 | `samples/sample_nested_subgraph.json` | ネストしたサブグラフのデモ（2レベル） |
 | `samples/sample_loop.json` | ループ実行のデモ |
+| `samples/sample_git.json` | GitExecutorの基本操作デモ |
+| `samples/sample_git_all_operations.json` | GitExecutorの全操作デモ |
+| `samples/sample_github.json` | GitHubExecutorの基本操作デモ |
+| `samples/sample_github_all_operations.json` | GitHubExecutorの全操作デモ |
 | `samples/sample_analysis_test.json` | 静的解析のエラー検出テスト用 |
 | `samples/sample_error_test.json` | エラー検出テスト用 |
 | `samples/large_dag.json` | パフォーマンステスト用（大規模DAG） |

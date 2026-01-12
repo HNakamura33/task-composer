@@ -107,6 +107,8 @@ task-composer/
 - `LogExecutor` - デバッグ・テスト用ログ出力
 - `McpExecutor` - MCP (Model Context Protocol) 連携
 - `DagExecutor` - サブグラフ（入れ子DAG）実行
+- `GitExecutor` - Gitリポジトリ操作（clone, commit, branch, push等）
+- `GitHubExecutor` - GitHub API連携（Issue, PR操作）
 - `ExecutorRegistry` - Executor管理
 
 ### サブグラフ実行

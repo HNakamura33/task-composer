@@ -1,0 +1,171 @@
+{
+  "tasks": [
+    {
+      "task_id": "init_repo",
+      "name": "Init Repository",
+      "description": "Initialize a new git repository",
+      "executor": "git",
+      "args": {
+        "action": {
+          "type": "init",
+          "path": "/tmp/git-test-repo",
+          "bare": false
+        }
+      }
+    },
+    {
+      "task_id": "clone_repo",
+      "name": "Clone Repository",
+      "description": "Clone an existing repository",
+      "executor": "git",
+      "args": {
+        "action": {
+          "type": "clone",
+          "url": "https://github.com/HNakamura33/task-composer-test.git",
+          "path": "/tmp/task-composer-test",
+          "branch": "main"
+        }
+      }
+    },
+    {
+      "task_id": "open_repo",
+      "name": "Open Repository",
+      "description": "Open an existing repository",
+      "executor": "git",
+      "args": {
+        "action": {
+          "type": "open",
+          "path": "/tmp/task-composer-test"
+        }
+      },
+      "dependencies": ["clone_repo"]
+    },
+    {
+      "task_id": "status",
+      "name": "Check Status",
+      "description": "Check repository status",
+      "executor": "git",
+      "args": {
+        "action": {
+          "type": "status",
+          "path": "/tmp/task-composer-test",
+          "include_untracked": true
+        }
+      },
+      "dependencies": ["open_repo"]
+    },
+    {
+      "task_id": "diff_unstaged",
+      "name": "Show Unstaged Diff",
+      "description": "Show unstaged changes",
+      "executor": "git",
+      "args": {
+        "action": {
+          "type": "diff",
+          "path": "/tmp/task-composer-test",
+          "staged": false
+        }
+      },
+      "dependencies": ["status"]
+    },
+    {
+      "task_id": "diff_staged",
+      "name": "Show Staged Diff",
+      "description": "Show staged changes",
+      "executor": "git",
+      "args": {
+        "action": {
+          "type": "diff",
+          "path": "/tmp/task-composer-test",
+          "staged": true
+        }
+      },
+      "dependencies": ["status"]
+    },
+    {
+      "task_id": "log",
+      "name": "Show Log",
+      "description": "Show commit history",
+      "executor": "git",
+      "args": {
+        "action": {
+          "type": "log",
+          "path": "/tmp/task-composer-test",
+          "max_count": 5
+        }
+      },
+      "dependencies": ["status"]
+    },
+    {
+      "task_id": "list_branches",
+      "name": "List Branches",
+      "description": "List all branches",
+      "executor": "git",
+      "args": {
+        "action": {
+          "type": "list_branches",
+          "path": "/tmp/task-composer-test",
+          "branch_type": "all"
+        }
+      },
+      "dependencies": ["status"]
+    },
+    {
+      "task_id": "create_branch",
+      "name": "Create Branch",
+      "description": "Create a new branch",
+      "executor": "git",
+      "args": {
+        "action": {
+          "type": "create_branch",
+          "path": "/tmp/task-composer-test",
+          "name": "feature/test-branch",
+          "checkout": true
+        }
+      },
+      "dependencies": ["list_branches"]
+    },
+    {
+      "task_id": "checkout_main",
+      "name": "Checkout Main",
+      "description": "Switch back to main branch",
+      "executor": "git",
+      "args": {
+        "action": {
+          "type": "checkout",
+          "path": "/tmp/task-composer-test",
+          "branch": "main"
+        }
+      },
+      "dependencies": ["create_branch"]
+    },
+    {
+      "task_id": "delete_branch",
+      "name": "Delete Branch",
+      "description": "Delete the test branch",
+      "executor": "git",
+      "args": {
+        "action": {
+          "type": "delete_branch",
+          "path": "/tmp/task-composer-test",
+          "name": "feature/test-branch"
+        }
+      },
+      "dependencies": ["checkout_main"]
+    },
+    {
+      "task_id": "fetch",
+      "name": "Fetch",
+      "description": "Fetch from remote",
+      "executor": "git",
+      "args": {
+        "action": {
+          "type": "fetch",
+          "path": "/tmp/task-composer-test",
+          "remote": "origin"
+        }
+      },
+      "dependencies": ["delete_branch"]
+    }
+  ]
+}
