@@ -1,0 +1,51 @@
+{
+  "tasks": [
+    {
+      "task_id": "repo",
+      "name": "Repository Config",
+      "description": "リポジトリ情報を保持するデータノード",
+      "executor": "data",
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer",
+        "base_branch": "main"
+      }
+    },
+    {
+      "task_id": "issue_33",
+      "name": "Issue #33",
+      "description": "DataExecutor実装のIssue情報",
+      "executor": "data",
+      "args": {
+        "number": 33,
+        "title": "DataExecutorの実装",
+        "labels": ["enhancement", "rust"]
+      }
+    },
+    {
+      "task_id": "thresholds",
+      "name": "Thresholds",
+      "description": "各種閾値設定",
+      "executor": "data",
+      "args": {
+        "coverage_min": 0.8,
+        "max_files": 10,
+        "timeout_secs": 300
+      }
+    },
+    {
+      "task_id": "log_config",
+      "name": "Log Config Data",
+      "description": "データノードの内容を確認",
+      "executor": "log",
+      "dependencies": ["repo", "issue_33", "thresholds"],
+      "args": {
+        "repo_owner": "$.repo.output.owner",
+        "repo_name": "$.repo.output.repo",
+        "issue_number": "$.issue_33.output.number",
+        "issue_title": "$.issue_33.output.title",
+        "coverage_threshold": "$.thresholds.output.coverage_min"
+      }
+    }
+  ]
+}
