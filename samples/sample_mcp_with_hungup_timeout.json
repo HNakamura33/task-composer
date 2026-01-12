@@ -5,14 +5,19 @@
       "name": "Security Code Review",
       "description": "Review code for security vulnerabilities",
       "priority": 1,
-      "status": "Pending",
       "prompt": "Security review",
       "executor": "mcp",
       "args": {
         "connection": {
           "type": "stdio",
           "command": "uv",
-          "args": ["run", "--directory", "/Users/hirotaka/task-composer/mcp_servers/claude_code_mcp", "main.py", "serve"],
+          "args": [
+            "run",
+            "--directory",
+            "/Users/hirotaka/task-composer/mcp_servers/claude_code_mcp",
+            "main.py",
+            "serve"
+          ],
           "env": {}
         },
         "tool": "claude_code_query",
@@ -20,7 +25,7 @@
           "prompt": "Review the path_resolver.rs file for potential security issues. Focus on: 1) Input validation 2) Path traversal risks 3) Error handling. Be concise.",
           "options": {
             "cwd": "/Users/hirotaka/task-composer/experiment",
-            "max_turns": 5,
+            "max_turns": 100,
             "allowed_tools": ["Read", "Grep", "Glob"]
           },
           "extra_options": {
@@ -58,14 +63,20 @@
       "name": "Documentation Writer",
       "description": "Write documentation based on code analysis",
       "priority": 2,
-      "status": "Pending",
       "prompt": "Write docs",
       "executor": "mcp",
+      "timeout_secs": 120,
       "args": {
         "connection": {
           "type": "stdio",
           "command": "uv",
-          "args": ["run", "--directory", "/Users/hirotaka/task-composer/mcp_servers/claude_code_mcp", "main.py", "serve"],
+          "args": [
+            "run",
+            "--directory",
+            "/Users/hirotaka/task-composer/mcp_servers/claude_code_mcp",
+            "main.py",
+            "serve"
+          ],
           "env": {}
         },
         "tool": "claude_code_query",
@@ -73,8 +84,8 @@
           "prompt": "Based on the security review, create a brief SECURITY.md file documenting: 1) Security considerations for path_resolver 2) Input validation approach 3) Recommended usage patterns. Keep it under 50 lines.",
           "options": {
             "cwd": "/Users/hirotaka/task-composer/experiment",
-            "max_turns": 10,
-            "permission_mode": "acceptEdits",
+            "max_turns": 100,
+            "permission_mode": "defualt",
             "allowed_tools": ["Read", "Write"]
           },
           "extra_options": {

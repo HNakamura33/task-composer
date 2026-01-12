@@ -1,5 +1,5 @@
 use super::*;
-use crate::types::{Role, FilePermission, ToolPermission, Status};
+use crate::types::{Role, FilePermission, ToolPermission};
 
 /// テスト用のTaskを作成するヘルパー関数
 fn create_task_with_permissions(
@@ -10,11 +10,10 @@ fn create_task_with_permissions(
 ) -> Task {
     Task {
         task_id: task_id.to_string(),
-        name: format!("Task {}", task_id),
-        description: String::new(),
+        name: Some(format!("Task {}", task_id)),
+        description: Some(String::new()),
         priority: 0,
-        status: Status::Pending,
-        prompt: String::new(),
+        prompt: Some(String::new()),
         dependencies: vec![],
         executor: String::from("log"),
         role: Role {
@@ -31,9 +30,9 @@ fn create_task_with_permissions(
             },
         },
         args: serde_json::Value::Null,
-        inputs: serde_json::Value::Null,
         if_condition: None,
         else_condition: None,
+        timeout_secs: None,
     }
 }
 

@@ -63,15 +63,15 @@ impl From<&Task> for UiTask {
     fn from(task: &Task) -> Self {
         UiTask {
             task_id: task.task_id.clone(),
-            name: task.name.clone(),
-            description: task.description.clone(),
+            name: task.display_name().to_string(),
+            description: task.description.clone().unwrap_or_default(),
             priority: task.priority,
-            status: task.status.clone().into(),
-            prompt: task.prompt.clone(),
+            status: UiStatus::Pending, // Task構造体からstatusフィールドが削除されたため
+            prompt: task.prompt.clone().unwrap_or_default(),
             executor: task.executor.clone(),
             dependencies: task.dependencies.clone(),
             role: task.role.clone(),
-            inputs: task.inputs.clone(),
+            inputs: serde_json::Value::Null, // inputsはargsに統合されたため
             args: task.args.clone(),
             position: None,
         }
@@ -80,25 +80,19 @@ impl From<&Task> for UiTask {
 
 impl From<&UiTask> for Task {
     fn from(ui_task: &UiTask) -> Self {
-        use task_composer_core::types::Status;
         Task {
             task_id: ui_task.task_id.clone(),
-            name: ui_task.name.clone(),
-            description: ui_task.description.clone(),
-            priority: ui_task.priority,
-            status: match ui_task.status {
-                UiStatus::Pending => Status::Pending,
-                UiStatus::InProgress => Status::InProgress,
-                UiStatus::Completed | UiStatus::Failed => Status::Completed,
-            },
-            prompt: ui_task.prompt.clone(),
             executor: ui_task.executor.clone(),
+            name: Some(ui_task.name.clone()),
+            description: Some(ui_task.description.clone()),
+            priority: ui_task.priority,
+            prompt: Some(ui_task.prompt.clone()),
             dependencies: ui_task.dependencies.clone(),
             role: ui_task.role.clone(),
-            inputs: ui_task.inputs.clone(),
             args: ui_task.args.clone(),
             if_condition: None,
             else_condition: None,
+            timeout_secs: None,
         }
     }
 }

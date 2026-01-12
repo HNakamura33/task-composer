@@ -213,7 +213,7 @@ impl TaskExecutor for McpExecutor {
         task: &Task,
         ctx: &ExecutionContext,
     ) -> Result<ExecutionResult, String> {
-        println!("Executing MCP Task: {}", task.name);
+        println!("Executing MCP Task: {}", task.display_name());
         println!("  ID: {}", task.task_id);
 
         // 接続設定を取得（argsから、またはデフォルト設定）

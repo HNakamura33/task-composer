@@ -10,38 +10,52 @@
 //! - [`WritePermission`] - ファイル書き込み権限
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// タスクを表す構造体
 ///
 /// DAG内の各ノードに対応し、タスクの詳細情報を保持します。
+///
+/// # 必須フィールド
+/// - `task_id`: タスクの一意な識別子
+/// - `executor`: 使用するExecutorの名前
+///
+/// # オプショナルフィールド
+/// その他のフィールドはすべてオプショナルで、デフォルト値が適用されます。
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Task {
-    /// タスクの一意な識別子
+    /// タスクの一意な識別子（必須）
     pub task_id: String,
-    /// タスクの名前
-    pub name: String,
-    /// タスクの詳細説明
-    pub description: String,
-    /// タスクの優先度（0-255、数値が大きいほど高優先）
-    pub priority: u8,
-    /// タスクの現在の状態
-    pub status: Status,
-    /// タスク実行時のプロンプト
-    pub prompt: String,
-    /// タスクを実行するロール
-    pub role: Role,
-    
-    /// 使用するExecutorの名前
+
+    /// 使用するExecutorの名前（必須）
     pub executor: String,
 
-    /// このタスクが依存するタスクIDのリスト
-    pub dependencies: Vec<String>,
-    
-    /// タスク実行時の入力データ（パス参照を含む）
+    /// タスクの表示名（省略時はtask_idを使用）
     #[serde(default)]
-    pub inputs: serde_json::Value,
+    pub name: Option<String>,
 
-    /// タスク実行時の引数
+    /// タスクの詳細説明
+    #[serde(default)]
+    pub description: Option<String>,
+
+    /// タスクの優先度（0-255、数値が大きいほど高優先、デフォルト: 0）
+    #[serde(default)]
+    pub priority: u8,
+
+    /// タスク実行時のプロンプト
+    #[serde(default)]
+    pub prompt: Option<String>,
+
+    /// タスクを実行するロール（省略時は全権限許可）
+    #[serde(default = "Role::default_full_permission")]
+    pub role: Role,
+
+    /// このタスクが依存するタスクIDのリスト
+    #[serde(default)]
+    pub dependencies: Vec<String>,
+
+    /// タスク実行時の引数（パス参照を含む）
     #[serde(default)]
     pub args: serde_json::Value,
 
@@ -52,6 +66,13 @@ pub struct Task {
     /// 実行条件（falseなら実行）= ifの否定
     #[serde(default, rename = "else")]
     pub else_condition: Option<String>,
+
+    /// タスクのタイムアウト（秒）
+    ///
+    /// 指定しない場合はConfig.default_task_timeout_secsが使用されます。
+    /// どちらも指定しない場合はタイムアウトなしで実行されます。
+    #[serde(default)]
+    pub timeout_secs: Option<u64>,
 }
 
 /// Task のデフォルト値
@@ -59,19 +80,27 @@ impl Default for Task {
     fn default() -> Self {
         Task {
             task_id: String::new(),
-            name: String::from("Untitled Task"),
-            description: String::new(),
-            priority: 0,
-            status: Status::default(),
-            prompt: String::new(),
-            role: Role::default(),
             executor: String::new(),
+            name: None,
+            description: None,
+            priority: 0,
+            prompt: None,
+            role: Role::default_full_permission(),
             dependencies: vec![],
-            inputs: serde_json::Value::Null,
             args: serde_json::Value::Null,
             if_condition: None,
             else_condition: None,
+            timeout_secs: None,
         }
+    }
+}
+
+impl Task {
+    /// 表示用の名前を取得
+    ///
+    /// `name`が設定されている場合はそれを、なければ`task_id`を返します。
+    pub fn display_name(&self) -> &str {
+        self.name.as_deref().unwrap_or(&self.task_id)
     }
 }
 
@@ -111,6 +140,24 @@ impl Default for Role {
     }
 }
 
+impl Role {
+    /// 全権限を持つデフォルトロールを作成
+    ///
+    /// Task構造体でroleが省略された場合に使用されます。
+    /// すべてのツールとファイルアクセスが許可されます。
+    pub fn default_full_permission() -> Self {
+        Role {
+            role_id: String::from("default"),
+            name: String::from("Full Permission Role"),
+            subagents: vec![],
+            skills: vec![],
+            description: String::from("Default role with full permissions"),
+            tool_permissions: ToolPermission::full_permission(),
+            file_permissions: FilePermission::full_permission(),
+        }
+    }
+}
+
 /// ファイルアクセス権限を表す構造体
 ///
 /// ファイルシステムへのアクセス制御を定義します。
@@ -129,6 +176,17 @@ impl Default for FilePermission {
     fn default() -> Self {
         FilePermission {
             allowed_paths: vec![],
+            denied_paths: vec![],
+            read_only_paths: vec![],
+        }
+    }
+}
+
+impl FilePermission {
+    /// 全ファイルアクセスを許可する権限を作成
+    pub fn full_permission() -> Self {
+        FilePermission {
+            allowed_paths: vec![String::from("**/*")],
             denied_paths: vec![],
             read_only_paths: vec![],
         }
@@ -159,6 +217,17 @@ impl Default for BashPermission {
     }
 }
 
+impl BashPermission {
+    /// 全コマンド実行を許可する権限を作成
+    pub fn full_permission() -> Self {
+        BashPermission {
+            allowed_commands: vec![String::from("*")],
+            blocked_commands: vec![],
+            require_confirmation: vec![],
+        }
+    }
+}
+
 /// ファイル書き込み権限を表す構造体
 ///
 /// ファイル書き込み操作の制限を定義します。
@@ -180,6 +249,16 @@ impl Default for WritePermission {
     }
 }
 
+impl WritePermission {
+    /// 全ファイル書き込みを許可する権限を作成
+    pub fn full_permission() -> Self {
+        WritePermission {
+            max_file_size_mb: None, // 無制限
+            allowed_extensions: vec![String::from("*")],
+        }
+    }
+}
+
 /// ツール実行権限を表す構造体
 ///
 /// 各ツールの実行権限をまとめて管理します。
@@ -197,6 +276,16 @@ impl Default for ToolPermission {
         ToolPermission {
             bash: BashPermission::default(),
             write: WritePermission::default(),
+        }
+    }
+}
+
+impl ToolPermission {
+    /// 全ツール実行を許可する権限を作成
+    pub fn full_permission() -> Self {
+        ToolPermission {
+            bash: BashPermission::full_permission(),
+            write: WritePermission::full_permission(),
         }
     }
 }
@@ -257,12 +346,14 @@ pub enum FileConflictType {
 ///
 /// # Example
 /// ```
-/// use task_composer::types::Config;
-///
+/// # use task_composer_core::Config;
 /// let config = Config::default();
 /// assert_eq!(config.max_concurrent_tasks, 4);
 ///
-/// let custom_config = Config { max_concurrent_tasks: 10 };
+/// let custom_config = Config {
+///     max_concurrent_tasks: 10,
+///     default_task_timeout_secs: Some(300), // 5分のタイムアウト
+/// };
 /// ```
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Config {
@@ -271,15 +362,82 @@ pub struct Config {
     /// この値を超えるタスクは、実行中のタスクが完了するまでキューで待機します。
     /// デフォルト値は4です。
     pub max_concurrent_tasks: usize,
+
+    /// タスクのデフォルトタイムアウト（秒）
+    ///
+    /// 各タスクでtimeout_secsが指定されていない場合に使用されます。
+    /// Noneの場合はタイムアウトなしで実行されます。
+    #[serde(default)]
+    pub default_task_timeout_secs: Option<u64>,
 }
 
 impl Default for Config {
     /// デフォルト設定を作成
     ///
     /// - `max_concurrent_tasks`: 4
+    /// - `default_task_timeout_secs`: None（タイムアウトなし）
     fn default() -> Self {
         Config {
             max_concurrent_tasks: 4,
+            default_task_timeout_secs: None,
         }
     }
+}
+
+/// ループ設定
+///
+/// DAGを繰り返し実行するための設定を定義します。
+/// DAGの非巡回性を維持しつつ、外側でループを制御します。
+///
+/// # Example
+/// ```json
+/// {
+///   "loop_config": {
+///     "max_iterations": 5,
+///     "until_condition": "$.counter.output.value >= 10"
+///   }
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct LoopConfig {
+    /// 最大繰り返し回数
+    pub max_iterations: usize,
+    /// 継続条件（trueの間ループ継続）
+    #[serde(default)]
+    pub while_condition: Option<String>,
+    /// 終了条件（trueになったらループ終了）
+    #[serde(default)]
+    pub until_condition: Option<String>,
+}
+
+impl Default for LoopConfig {
+    fn default() -> Self {
+        LoopConfig {
+            max_iterations: 1,
+            while_condition: None,
+            until_condition: None,
+        }
+    }
+}
+
+/// ループ実行時のコンテキスト
+///
+/// ループ内で参照可能な情報を保持します。
+/// `$.loop.iteration`, `$.loop.first`, `$.loop.previous.*` で参照できます。
+///
+/// # 参照パス
+/// | 参照 | 意味 | 例 |
+/// |------|------|---|
+/// | `$.loop.iteration` | 現在のイテレーション番号（0始まり） | `0`, `1`, `2`... |
+/// | `$.loop.first` | 初回かどうか | `true` / `false` |
+/// | `$.loop.previous.{task_id}.output` | 前回の結果 | `$.loop.previous.counter.output.value` |
+#[derive(Debug, Clone)]
+pub struct LoopContext {
+    /// 現在のイテレーション番号（0始まり）
+    pub iteration: usize,
+    /// 初回かどうか
+    pub first: bool,
+    /// 前回イテレーションの結果（task_id -> JSON出力）
+    /// ExecutionResultの循環参照を避けるためserde_json::Valueで保持
+    pub previous_results: Option<HashMap<String, serde_json::Value>>,
 }

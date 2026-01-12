@@ -58,18 +58,17 @@ impl AnalysisOperations {
         for (task_id, ui_task) in &dag_state.tasks {
             let task = task_composer_core::types::Task {
                 task_id: task_id.clone(),
-                name: ui_task.name.clone(),
-                description: ui_task.description.clone(),
-                priority: ui_task.priority,
-                status: ui_task.status.clone().into(),
-                prompt: ui_task.prompt.clone(),
                 executor: ui_task.executor.clone(),
+                name: Some(ui_task.name.clone()),
+                description: Some(ui_task.description.clone()),
+                priority: ui_task.priority,
+                prompt: Some(ui_task.prompt.clone()),
                 dependencies: ui_task.dependencies.clone(),
                 role: ui_task.role.clone(),
                 args: ui_task.args.clone(),
-                inputs: ui_task.inputs.clone(),
                 if_condition: None,
                 else_condition: None,
+                timeout_secs: None,
             };
             dag.add_task(task);
         }

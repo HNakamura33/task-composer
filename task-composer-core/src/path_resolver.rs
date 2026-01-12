@@ -21,8 +21,8 @@
 
 use std::collections::HashMap;
 use regex::Regex;
-use crate::task_executor::{ExecutionResult, ExecutionStatus};
-use crate::types::Task;
+use crate::task_executor::ExecutionResult;
+use crate::types::{Task, LoopContext};
 
 /// パス解決時のエラー
 #[derive(Debug, PartialEq)]
@@ -39,16 +39,23 @@ pub enum PathResolveError {
     SelfFieldNotFound(String),
     /// $.self参照にcurrent_taskが必要
     SelfReferenceWithoutContext,
+    /// $.loop参照でloop_contextが必要
+    LoopReferenceWithoutContext,
+    /// $.loop参照でフィールドが見つからない
+    LoopFieldNotFound(String),
 }
 
 /// パス解決のコンテキスト
 ///
 /// `$.self` 参照を解決するために現在のタスク情報を保持する
+/// `$.loop` 参照を解決するためにループコンテキスト情報を保持する
 pub struct ResolveContext<'a> {
     /// 依存タスクの実行結果
     pub previous_results: &'a HashMap<String, ExecutionResult>,
     /// 現在実行中のタスク（$.self参照用）
     pub current_task: Option<&'a Task>,
+    /// ループコンテキスト（$.loop参照用）
+    pub loop_context: Option<&'a LoopContext>,
 }
 
 impl std::fmt::Display for PathResolveError {
@@ -65,6 +72,12 @@ impl std::fmt::Display for PathResolveError {
             }
             PathResolveError::SelfReferenceWithoutContext => {
                 write!(f, "$.self reference requires current_task context")
+            }
+            PathResolveError::LoopReferenceWithoutContext => {
+                write!(f, "$.loop reference requires loop_context")
+            }
+            PathResolveError::LoopFieldNotFound(field) => {
+                write!(f, "Loop field not found: {}", field)
             }
         }
     }
@@ -187,6 +200,9 @@ fn value_to_string(value: &serde_json::Value) -> String {
 /// パス形式:
 /// - `$.{task_id}.output.{field_path}` - 依存タスクの出力を参照
 /// - `$.self.{field}` - 現在のタスクのフィールドを参照
+/// - `$.loop.iteration` - 現在のイテレーション番号
+/// - `$.loop.first` - 初回かどうか
+/// - `$.loop.previous.{task_id}.output.{field}` - 前回イテレーションの結果
 fn resolve_path(
     path: &str,
     ctx: &ResolveContext,
@@ -202,7 +218,13 @@ fn resolve_path(
         return resolve_self_reference(field_path, ctx);
     }
 
-    // 3. 依存タスク参照: ".output." を探してtask_idを抽出
+    // 3. $.loop 参照の場合
+    if path.starts_with("loop.") {
+        let field_path = path.strip_prefix("loop.").unwrap();
+        return resolve_loop_reference(field_path, ctx);
+    }
+
+    // 4. 依存タスク参照: ".output." を探してtask_idを抽出
     let output_marker = ".output.";
     let output_pos = path.find(output_marker).ok_or_else(|| {
         PathResolveError::InvalidPathSyntax(format!("Path must contain '.output.' : $.{}", path))
@@ -211,13 +233,87 @@ fn resolve_path(
     let task_id = &path[..output_pos];
     let field_path = &path[output_pos + output_marker.len()..];
 
-    // 4. previous_resultsからtaskの出力を取得
+    // 5. previous_resultsからtaskの出力を取得
     let result = ctx.previous_results.get(task_id).ok_or_else(|| {
         PathResolveError::TaskNotFound(task_id.to_string())
     })?;
 
-    // 5. フィールドパスに従って値を取得
+    // 6. フィールドパスに従って値を取得
     get_value_by_field_path(&result.output, field_path)
+}
+
+/// $.loop 参照を解決する
+///
+/// ループコンテキストのフィールドを取得する
+/// - `$.loop.iteration` - 現在のイテレーション番号
+/// - `$.loop.first` - 初回かどうか
+/// - `$.loop.previous.{task_id}.output.{field}` - 前回の結果
+fn resolve_loop_reference(
+    field_path: &str,
+    ctx: &ResolveContext,
+) -> Result<serde_json::Value, PathResolveError> {
+    let loop_ctx = ctx.loop_context.ok_or(PathResolveError::LoopReferenceWithoutContext)?;
+
+    // iteration
+    if field_path == "iteration" {
+        return Ok(serde_json::json!(loop_ctx.iteration));
+    }
+
+    // first
+    if field_path == "first" {
+        return Ok(serde_json::json!(loop_ctx.first));
+    }
+
+    // previous.{task_id}.output.{field}
+    if field_path.starts_with("previous.") {
+        let rest = field_path.strip_prefix("previous.").unwrap();
+        return resolve_loop_previous_reference(rest, loop_ctx);
+    }
+
+    Err(PathResolveError::LoopFieldNotFound(field_path.to_string()))
+}
+
+/// $.loop.previous.{task_id}.output.{field} を解決する
+fn resolve_loop_previous_reference(
+    path: &str,
+    loop_ctx: &LoopContext,
+) -> Result<serde_json::Value, PathResolveError> {
+    // 初回イテレーションの場合、previous_resultsはNone
+    let previous_results = match &loop_ctx.previous_results {
+        Some(results) => results,
+        None => return Ok(serde_json::Value::Null),
+    };
+
+    // ".output." を探してtask_idを抽出
+    let output_marker = ".output";
+    let output_pos = path.find(output_marker).ok_or_else(|| {
+        PathResolveError::InvalidPathSyntax(format!(
+            "$.loop.previous path must contain '.output' : $.loop.previous.{}",
+            path
+        ))
+    })?;
+
+    let task_id = &path[..output_pos];
+    let remaining = &path[output_pos + output_marker.len()..];
+
+    // タスクの前回結果を取得
+    let task_output = previous_results.get(task_id).ok_or_else(|| {
+        PathResolveError::TaskNotFound(format!("loop.previous.{}", task_id))
+    })?;
+
+    // ".output" の後にフィールドパスがある場合
+    if remaining.starts_with('.') {
+        let field_path = &remaining[1..]; // 先頭の '.' を除去
+        get_value_by_field_path(task_output, field_path)
+    } else if remaining.is_empty() {
+        // ".output" で終わる場合は出力全体を返す
+        Ok(task_output.clone())
+    } else {
+        Err(PathResolveError::InvalidPathSyntax(format!(
+            "Invalid path after .output: {}",
+            remaining
+        )))
+    }
 }
 
 /// $.self 参照を解決する
@@ -238,13 +334,12 @@ fn resolve_self_reference(
     // Taskの各フィールドにアクセス
     let value = match first_field {
         "task_id" => serde_json::Value::String(task.task_id.clone()),
-        "name" => serde_json::Value::String(task.name.clone()),
-        "description" => serde_json::Value::String(task.description.clone()),
+        "name" => serde_json::Value::String(task.display_name().to_string()),
+        "description" => serde_json::Value::String(task.description.clone().unwrap_or_default()),
         "priority" => serde_json::Value::Number(task.priority.into()),
-        "prompt" => serde_json::Value::String(task.prompt.clone()),
+        "prompt" => serde_json::Value::String(task.prompt.clone().unwrap_or_default()),
         "executor" => serde_json::Value::String(task.executor.clone()),
         "dependencies" => serde_json::to_value(&task.dependencies).unwrap(),
-        "inputs" => task.inputs.clone(),
         "args" => task.args.clone(),
         "role" => serde_json::to_value(&task.role).unwrap(),
         _ => return Err(PathResolveError::SelfFieldNotFound(first_field.to_string())),
@@ -660,6 +755,7 @@ fn value_to_bool(value: &serde_json::Value) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+    use crate::task_executor::ExecutionStatus;
 
     /// テスト用のprevious_resultsを作成
     fn create_test_results() -> HashMap<String, ExecutionResult> {
@@ -708,10 +804,10 @@ mod tests {
 
         Task {
             task_id: "test-task".to_string(),
-            name: "Test Task".to_string(),
-            description: "A test task".to_string(),
+            name: Some("Test Task".to_string()),
+            description: Some("A test task".to_string()),
             priority: 5,
-            prompt: "Do something".to_string(),
+            prompt: Some("Do something".to_string()),
             executor: "test-executor".to_string(),
             dependencies: vec!["1".to_string(), "2".to_string()],
             args: json!({"key": "value"}),
@@ -747,6 +843,7 @@ mod tests {
         ResolveContext {
             previous_results: results,
             current_task: None,
+            loop_context: None,
         }
     }
 
@@ -758,6 +855,19 @@ mod tests {
         ResolveContext {
             previous_results: results,
             current_task: Some(task),
+            loop_context: None,
+        }
+    }
+
+    /// ループコンテキスト付きのテスト用ヘルパー
+    fn ctx_with_loop<'a>(
+        results: &'a HashMap<String, ExecutionResult>,
+        loop_ctx: &'a crate::types::LoopContext,
+    ) -> ResolveContext<'a> {
+        ResolveContext {
+            previous_results: results,
+            current_task: None,
+            loop_context: Some(loop_ctx),
         }
     }
 
@@ -1356,6 +1466,186 @@ mod tests {
             "$.validate.output.ok == true && $.router.output.value == \"b\"",
             &ctx
         );
+        assert_eq!(result, Ok(true));
+    }
+
+    // ============================================
+    // $.loop 参照のテスト
+    // ============================================
+
+    #[test]
+    fn test_loop_iteration_reference() {
+        let results = create_test_results();
+        let loop_ctx = crate::types::LoopContext {
+            iteration: 3,
+            first: false,
+            previous_results: None,
+        };
+        let ctx = ctx_with_loop(&results, &loop_ctx);
+        let input = json!("$.loop.iteration");
+
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+
+        assert_eq!(resolved, json!(3));
+    }
+
+    #[test]
+    fn test_loop_first_reference() {
+        let results = create_test_results();
+        let loop_ctx = crate::types::LoopContext {
+            iteration: 0,
+            first: true,
+            previous_results: None,
+        };
+        let ctx = ctx_with_loop(&results, &loop_ctx);
+        let input = json!("$.loop.first");
+
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+
+        assert_eq!(resolved, json!(true));
+    }
+
+    #[test]
+    fn test_loop_first_false() {
+        let results = create_test_results();
+        let loop_ctx = crate::types::LoopContext {
+            iteration: 2,
+            first: false,
+            previous_results: None,
+        };
+        let ctx = ctx_with_loop(&results, &loop_ctx);
+        let input = json!("$.loop.first");
+
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+
+        assert_eq!(resolved, json!(false));
+    }
+
+    #[test]
+    fn test_loop_previous_null_on_first_iteration() {
+        let results = create_test_results();
+        let loop_ctx = crate::types::LoopContext {
+            iteration: 0,
+            first: true,
+            previous_results: None,
+        };
+        let ctx = ctx_with_loop(&results, &loop_ctx);
+        let input = json!("$.loop.previous.counter.output.value");
+
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+
+        assert_eq!(resolved, json!(null));
+    }
+
+    #[test]
+    fn test_loop_previous_reference() {
+        let results = create_test_results();
+        let mut prev_results = HashMap::new();
+        prev_results.insert("counter".to_string(), json!({"value": 42, "name": "test"}));
+
+        let loop_ctx = crate::types::LoopContext {
+            iteration: 1,
+            first: false,
+            previous_results: Some(prev_results),
+        };
+        let ctx = ctx_with_loop(&results, &loop_ctx);
+        let input = json!("$.loop.previous.counter.output.value");
+
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+
+        assert_eq!(resolved, json!(42));
+    }
+
+    #[test]
+    fn test_loop_previous_full_output() {
+        let results = create_test_results();
+        let mut prev_results = HashMap::new();
+        prev_results.insert("task1".to_string(), json!({"status": "ok", "count": 10}));
+
+        let loop_ctx = crate::types::LoopContext {
+            iteration: 2,
+            first: false,
+            previous_results: Some(prev_results),
+        };
+        let ctx = ctx_with_loop(&results, &loop_ctx);
+        let input = json!("$.loop.previous.task1.output");
+
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+
+        assert_eq!(resolved, json!({"status": "ok", "count": 10}));
+    }
+
+    #[test]
+    fn test_loop_embedded_reference() {
+        let results = create_test_results();
+        let loop_ctx = crate::types::LoopContext {
+            iteration: 5,
+            first: false,
+            previous_results: None,
+        };
+        let ctx = ctx_with_loop(&results, &loop_ctx);
+        let input = json!("Iteration ${$.loop.iteration}, first: ${$.loop.first}");
+
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+
+        assert_eq!(resolved, json!("Iteration 5, first: false"));
+    }
+
+    #[test]
+    fn test_loop_reference_without_context_returns_error() {
+        let results = create_test_results();
+        let ctx = ctx_without_task(&results);  // loop_context is None
+        let input = json!("$.loop.iteration");
+
+        let result = resolve_inputs(&input, &ctx);
+
+        assert!(matches!(result, Err(PathResolveError::LoopReferenceWithoutContext)));
+    }
+
+    #[test]
+    fn test_loop_unknown_field_returns_error() {
+        let results = create_test_results();
+        let loop_ctx = crate::types::LoopContext {
+            iteration: 0,
+            first: true,
+            previous_results: None,
+        };
+        let ctx = ctx_with_loop(&results, &loop_ctx);
+        let input = json!("$.loop.unknown_field");
+
+        let result = resolve_inputs(&input, &ctx);
+
+        assert!(matches!(result, Err(PathResolveError::LoopFieldNotFound(_))));
+    }
+
+    #[test]
+    fn test_loop_condition_evaluation() {
+        let results = create_test_results();
+        let mut prev_results = HashMap::new();
+        prev_results.insert("counter".to_string(), json!({"value": 10}));
+
+        let loop_ctx = crate::types::LoopContext {
+            iteration: 3,
+            first: false,
+            previous_results: Some(prev_results),
+        };
+
+        let ctx = ResolveContext {
+            previous_results: &results,
+            current_task: None,
+            loop_context: Some(&loop_ctx),
+        };
+
+        // iteration check
+        let result = evaluate_condition("$.loop.iteration >= 3", &ctx);
+        assert_eq!(result, Ok(true));
+
+        // first check
+        let result = evaluate_condition("$.loop.first == false", &ctx);
+        assert_eq!(result, Ok(true));
+
+        // previous value check
+        let result = evaluate_condition("$.loop.previous.counter.output.value >= 10", &ctx);
         assert_eq!(result, Ok(true));
     }
 }
