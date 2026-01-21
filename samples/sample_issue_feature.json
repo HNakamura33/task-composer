@@ -27,7 +27,7 @@
         "action": {
           "type": "create_issue",
           "title": "[Design] Database Schema for Auth",
-          "body": "## Overview\nDesign database schema for user authentication.\n\n## Parent Issue\nDepends on: #$.design.output.number\n\n## Tasks\n- [ ] User table design\n- [ ] Session table design\n- [ ] Migration scripts"
+          "body": "## Overview\nDesign database schema for user authentication.\n\n## Parent Issue\nDepends on: #${$.design.output.number}\n\n## Tasks\n- [ ] User table design\n- [ ] Session table design\n- [ ] Migration scripts"
         }
       }
     },
@@ -43,7 +43,7 @@
         "action": {
           "type": "create_issue",
           "title": "[Design] API Endpoints for Auth",
-          "body": "## Overview\nDesign REST API endpoints.\n\n## Parent Issue\nDepends on: #$.design.output.number\n\n## Endpoints\n- [ ] POST /auth/login\n- [ ] POST /auth/logout\n- [ ] POST /auth/register\n- [ ] GET /auth/me"
+          "body": "## Overview\nDesign REST API endpoints.\n\n## Parent Issue\nDepends on: #${$.design.output.number}\n\n## Endpoints\n- [ ] POST /auth/login\n- [ ] POST /auth/logout\n- [ ] POST /auth/register\n- [ ] GET /auth/me"
         }
       }
     },
@@ -59,7 +59,7 @@
         "action": {
           "type": "create_issue",
           "title": "[Design] UI Mockups for Auth",
-          "body": "## Overview\nCreate UI mockups for authentication.\n\n## Parent Issue\nDepends on: #$.design.output.number\n\n## Screens\n- [ ] Login page\n- [ ] Registration page\n- [ ] Password reset page"
+          "body": "## Overview\nCreate UI mockups for authentication.\n\n## Parent Issue\nDepends on: #${$.design.output.number}\n\n## Screens\n- [ ] Login page\n- [ ] Registration page\n- [ ] Password reset page"
         }
       }
     },
@@ -75,7 +75,7 @@
         "action": {
           "type": "create_issue",
           "title": "[Impl] Database Migration for Auth",
-          "body": "## Overview\nImplement database migrations.\n\n## Parent Issue\nDepends on: #$.db_design.output.number\n\n## Tasks\n- [ ] Create migration files\n- [ ] Add indexes\n- [ ] Seed data for testing"
+          "body": "## Overview\nImplement database migrations.\n\n## Parent Issue\nDepends on: #${$.db_design.output.number}\n\n## Tasks\n- [ ] Create migration files\n- [ ] Add indexes\n- [ ] Seed data for testing"
         }
       }
     },
@@ -91,7 +91,7 @@
         "action": {
           "type": "create_issue",
           "title": "[Impl] API Endpoints for Auth",
-          "body": "## Overview\nImplement REST API endpoints.\n\n## Parent Issue\nDepends on: #$.api_design.output.number\n\n## Tasks\n- [ ] Implement controllers\n- [ ] Add authentication middleware\n- [ ] Unit tests"
+          "body": "## Overview\nImplement REST API endpoints.\n\n## Parent Issue\nDepends on: #${$.api_design.output.number}\n\n## Tasks\n- [ ] Implement controllers\n- [ ] Add authentication middleware\n- [ ] Unit tests"
         }
       }
     },
@@ -107,7 +107,7 @@
         "action": {
           "type": "create_issue",
           "title": "[Impl] UI Components for Auth",
-          "body": "## Overview\nImplement UI components.\n\n## Parent Issue\nDepends on: #$.ui_design.output.number\n\n## Tasks\n- [ ] Login form component\n- [ ] Registration form component\n- [ ] Form validation"
+          "body": "## Overview\nImplement UI components.\n\n## Parent Issue\nDepends on: #${$.ui_design.output.number}\n\n## Tasks\n- [ ] Login form component\n- [ ] Registration form component\n- [ ] Form validation"
         }
       }
     },
@@ -123,7 +123,7 @@
         "action": {
           "type": "create_issue",
           "title": "[Test] Integration Tests for Auth",
-          "body": "## Overview\nIntegration testing for authentication system.\n\n## Dependencies\n- DB: #$.db_impl.output.number\n- API: #$.api_impl.output.number\n- UI: #$.ui_impl.output.number\n\n## Test Cases\n- [ ] User registration flow\n- [ ] Login/logout flow\n- [ ] Session management\n- [ ] Error handling"
+          "body": "## Overview\nIntegration testing for authentication system.\n\n## Dependencies\n- DB: #${$.db_impl.output.number}\n- API: #${$.api_impl.output.number}\n- UI: #${$.ui_impl.output.number}\n\n## Test Cases\n- [ ] User registration flow\n- [ ] Login/logout flow\n- [ ] Session management\n- [ ] Error handling"
         }
       }
     },
@@ -139,7 +139,7 @@
         "action": {
           "type": "create_issue",
           "title": "[Docs] Authentication System Documentation",
-          "body": "## Overview\nWrite comprehensive documentation.\n\n## Parent Issue\nDepends on: #$.integration_test.output.number\n\n## Sections\n- [ ] API reference\n- [ ] User guide\n- [ ] Security best practices"
+          "body": "## Overview\nWrite comprehensive documentation.\n\n## Parent Issue\nDepends on: #${$.integration_test.output.number}\n\n## Sections\n- [ ] API reference\n- [ ] User guide\n- [ ] Security best practices"
         }
       }
     }

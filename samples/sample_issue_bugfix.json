@@ -45,7 +45,7 @@
         "action": {
           "type": "create_issue",
           "title": "[P0][Fix] Auth Module Security Hardening",
-          "body": "## Overview\nHarden authentication module after security patch.\n\n## Parent Issue\nDepends on: #$.security_patch.output.number\n\n## Priority\n**P0 - Critical**\n\n## Tasks\n- [ ] Implement additional validation\n- [ ] Add rate limiting\n- [ ] Enhance session management\n- [ ] Add security logging"
+          "body": "## Overview\nHarden authentication module after security patch.\n\n## Parent Issue\nDepends on: #${$.security_patch.output.number}\n\n## Priority\n**P0 - Critical**\n\n## Tasks\n- [ ] Implement additional validation\n- [ ] Add rate limiting\n- [ ] Enhance session management\n- [ ] Add security logging"
         }
       }
     },
@@ -62,7 +62,7 @@
         "action": {
           "type": "create_issue",
           "title": "[Refactor] Improve Logging Module",
-          "body": "## Overview\nModernize logging module.\n\n## Parent Issue\nDepends on: #$.refactor_foundation.output.number\n\n## Priority\n**P2 - Normal**\n\n## Tasks\n- [ ] Structured logging format\n- [ ] Log levels standardization\n- [ ] Performance optimization\n- [ ] Log rotation setup"
+          "body": "## Overview\nModernize logging module.\n\n## Parent Issue\nDepends on: #${$.refactor_foundation.output.number}\n\n## Priority\n**P2 - Normal**\n\n## Tasks\n- [ ] Structured logging format\n- [ ] Log levels standardization\n- [ ] Performance optimization\n- [ ] Log rotation setup"
         }
       }
     },
@@ -79,7 +79,7 @@
         "action": {
           "type": "create_issue",
           "title": "[Refactor] Improve Error Handling",
-          "body": "## Overview\nStandardize error handling patterns.\n\n## Parent Issue\nDepends on: #$.refactor_foundation.output.number\n\n## Priority\n**P2 - Normal**\n\n## Tasks\n- [ ] Define error types\n- [ ] Implement error boundaries\n- [ ] Add error reporting\n- [ ] User-friendly error messages"
+          "body": "## Overview\nStandardize error handling patterns.\n\n## Parent Issue\nDepends on: #${$.refactor_foundation.output.number}\n\n## Priority\n**P2 - Normal**\n\n## Tasks\n- [ ] Define error types\n- [ ] Implement error boundaries\n- [ ] Add error reporting\n- [ ] User-friendly error messages"
         }
       }
     },
@@ -100,7 +100,7 @@
         "action": {
           "type": "create_issue",
           "title": "[Test] Regression Tests - Security & Refactoring",
-          "body": "## Overview\nComprehensive regression testing after security fixes and refactoring.\n\n## Dependencies\n- Auth Fix: #$.auth_module_fix.output.number\n- Logging: #$.logging_improvement.output.number\n- Error Handling: #$.error_handling_improvement.output.number\n\n## Priority\n**P1 - High**\n\n## Test Coverage\n- [ ] Security regression tests\n- [ ] Functional regression tests\n- [ ] Performance regression tests\n- [ ] Integration tests"
+          "body": "## Overview\nComprehensive regression testing after security fixes and refactoring.\n\n## Dependencies\n- Auth Fix: #${$.auth_module_fix.output.number}\n- Logging: #${$.logging_improvement.output.number}\n- Error Handling: #${$.error_handling_improvement.output.number}\n\n## Priority\n**P1 - High**\n\n## Test Coverage\n- [ ] Security regression tests\n- [ ] Functional regression tests\n- [ ] Performance regression tests\n- [ ] Integration tests"
         }
       }
     }

@@ -27,7 +27,7 @@
         "action": {
           "type": "create_issue",
           "title": "[Service] Update UserService for Common Lib v2.0",
-          "body": "## Overview\nUpdate UserService to use common library v2.0.\n\n## Parent Issue\nDepends on: #$.common_lib_upgrade.output.number\n\n## Tasks\n- [ ] Update dependencies\n- [ ] Migrate auth module usage\n- [ ] Update logging calls\n- [ ] Run unit tests\n- [ ] Deploy to staging"
+          "body": "## Overview\nUpdate UserService to use common library v2.0.\n\n## Parent Issue\nDepends on: #${$.common_lib_upgrade.output.number}\n\n## Tasks\n- [ ] Update dependencies\n- [ ] Migrate auth module usage\n- [ ] Update logging calls\n- [ ] Run unit tests\n- [ ] Deploy to staging"
         }
       }
     },
@@ -43,7 +43,7 @@
         "action": {
           "type": "create_issue",
           "title": "[Service] Update OrderService for Common Lib v2.0",
-          "body": "## Overview\nUpdate OrderService to use common library v2.0.\n\n## Parent Issue\nDepends on: #$.common_lib_upgrade.output.number\n\n## Tasks\n- [ ] Update dependencies\n- [ ] Migrate auth module usage\n- [ ] Update logging calls\n- [ ] Run unit tests\n- [ ] Deploy to staging"
+          "body": "## Overview\nUpdate OrderService to use common library v2.0.\n\n## Parent Issue\nDepends on: #${$.common_lib_upgrade.output.number}\n\n## Tasks\n- [ ] Update dependencies\n- [ ] Migrate auth module usage\n- [ ] Update logging calls\n- [ ] Run unit tests\n- [ ] Deploy to staging"
         }
       }
     },
@@ -59,7 +59,7 @@
         "action": {
           "type": "create_issue",
           "title": "[Service] Update PaymentService for Common Lib v2.0",
-          "body": "## Overview\nUpdate PaymentService to use common library v2.0.\n\n## Parent Issue\nDepends on: #$.common_lib_upgrade.output.number\n\n## Tasks\n- [ ] Update dependencies\n- [ ] Migrate auth module usage\n- [ ] Update logging calls\n- [ ] Run unit tests\n- [ ] Deploy to staging"
+          "body": "## Overview\nUpdate PaymentService to use common library v2.0.\n\n## Parent Issue\nDepends on: #${$.common_lib_upgrade.output.number}\n\n## Tasks\n- [ ] Update dependencies\n- [ ] Migrate auth module usage\n- [ ] Update logging calls\n- [ ] Run unit tests\n- [ ] Deploy to staging"
         }
       }
     },
@@ -75,7 +75,7 @@
         "action": {
           "type": "create_issue",
           "title": "[Service] Update NotificationService for Common Lib v2.0",
-          "body": "## Overview\nUpdate NotificationService to use common library v2.0.\n\n## Parent Issue\nDepends on: #$.common_lib_upgrade.output.number\n\n## Tasks\n- [ ] Update dependencies\n- [ ] Migrate auth module usage\n- [ ] Update logging calls\n- [ ] Run unit tests\n- [ ] Deploy to staging"
+          "body": "## Overview\nUpdate NotificationService to use common library v2.0.\n\n## Parent Issue\nDepends on: #${$.common_lib_upgrade.output.number}\n\n## Tasks\n- [ ] Update dependencies\n- [ ] Migrate auth module usage\n- [ ] Update logging calls\n- [ ] Run unit tests\n- [ ] Deploy to staging"
         }
       }
     },
@@ -96,7 +96,7 @@
         "action": {
           "type": "create_issue",
           "title": "[Test] E2E Tests for Common Lib v2.0 Migration",
-          "body": "## Overview\nRun E2E tests after all services are updated.\n\n## Dependencies\n- UserService: #$.user_service_update.output.number\n- OrderService: #$.order_service_update.output.number\n- PaymentService: #$.payment_service_update.output.number\n- NotificationService: #$.notification_service_update.output.number\n\n## Test Scenarios\n- [ ] User registration → Order placement → Payment → Notification\n- [ ] Cross-service authentication\n- [ ] Logging consistency\n- [ ] Performance benchmarks"
+          "body": "## Overview\nRun E2E tests after all services are updated.\n\n## Dependencies\n- UserService: #${$.user_service_update.output.number}\n- OrderService: #${$.order_service_update.output.number}\n- PaymentService: #${$.payment_service_update.output.number}\n- NotificationService: #${$.notification_service_update.output.number}\n\n## Test Scenarios\n- [ ] User registration → Order placement → Payment → Notification\n- [ ] Cross-service authentication\n- [ ] Logging consistency\n- [ ] Performance benchmarks"
         }
       }
     }
