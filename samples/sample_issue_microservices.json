@@ -1,0 +1,108 @@
+{
+  "tasks": [
+    {
+      "task_id": "common_lib_upgrade",
+      "name": "Common Library Upgrade",
+      "description": "Upgrade shared library to new version",
+      "executor": "github",
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Infra] Upgrade Common Library v2.0",
+          "body": "## Overview\nUpgrade the shared common library to v2.0.\n\n## Changes\n- Breaking changes in auth module\n- New logging interface\n- Performance improvements\n\n## Affected Services\n- UserService\n- OrderService\n- PaymentService\n- NotificationService"
+        }
+      }
+    },
+    {
+      "task_id": "user_service_update",
+      "name": "UserService Update",
+      "description": "Update UserService to use new common library",
+      "executor": "github",
+      "dependencies": ["common_lib_upgrade"],
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Service] Update UserService for Common Lib v2.0",
+          "body": "## Overview\nUpdate UserService to use common library v2.0.\n\n## Parent Issue\nDepends on: #${$.common_lib_upgrade.output.number}\n\n## Tasks\n- [ ] Update dependencies\n- [ ] Migrate auth module usage\n- [ ] Update logging calls\n- [ ] Run unit tests\n- [ ] Deploy to staging"
+        }
+      }
+    },
+    {
+      "task_id": "order_service_update",
+      "name": "OrderService Update",
+      "description": "Update OrderService to use new common library",
+      "executor": "github",
+      "dependencies": ["common_lib_upgrade"],
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Service] Update OrderService for Common Lib v2.0",
+          "body": "## Overview\nUpdate OrderService to use common library v2.0.\n\n## Parent Issue\nDepends on: #${$.common_lib_upgrade.output.number}\n\n## Tasks\n- [ ] Update dependencies\n- [ ] Migrate auth module usage\n- [ ] Update logging calls\n- [ ] Run unit tests\n- [ ] Deploy to staging"
+        }
+      }
+    },
+    {
+      "task_id": "payment_service_update",
+      "name": "PaymentService Update",
+      "description": "Update PaymentService to use new common library",
+      "executor": "github",
+      "dependencies": ["common_lib_upgrade"],
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Service] Update PaymentService for Common Lib v2.0",
+          "body": "## Overview\nUpdate PaymentService to use common library v2.0.\n\n## Parent Issue\nDepends on: #${$.common_lib_upgrade.output.number}\n\n## Tasks\n- [ ] Update dependencies\n- [ ] Migrate auth module usage\n- [ ] Update logging calls\n- [ ] Run unit tests\n- [ ] Deploy to staging"
+        }
+      }
+    },
+    {
+      "task_id": "notification_service_update",
+      "name": "NotificationService Update",
+      "description": "Update NotificationService to use new common library",
+      "executor": "github",
+      "dependencies": ["common_lib_upgrade"],
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Service] Update NotificationService for Common Lib v2.0",
+          "body": "## Overview\nUpdate NotificationService to use common library v2.0.\n\n## Parent Issue\nDepends on: #${$.common_lib_upgrade.output.number}\n\n## Tasks\n- [ ] Update dependencies\n- [ ] Migrate auth module usage\n- [ ] Update logging calls\n- [ ] Run unit tests\n- [ ] Deploy to staging"
+        }
+      }
+    },
+    {
+      "task_id": "e2e_test",
+      "name": "E2E Testing",
+      "description": "Run end-to-end tests across all services",
+      "executor": "github",
+      "dependencies": [
+        "user_service_update",
+        "order_service_update",
+        "payment_service_update",
+        "notification_service_update"
+      ],
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Test] E2E Tests for Common Lib v2.0 Migration",
+          "body": "## Overview\nRun E2E tests after all services are updated.\n\n## Dependencies\n- UserService: #${$.user_service_update.output.number}\n- OrderService: #${$.order_service_update.output.number}\n- PaymentService: #${$.payment_service_update.output.number}\n- NotificationService: #${$.notification_service_update.output.number}\n\n## Test Scenarios\n- [ ] User registration → Order placement → Payment → Notification\n- [ ] Cross-service authentication\n- [ ] Logging consistency\n- [ ] Performance benchmarks"
+        }
+      }
+    }
+  ],
+  "config": {
+    "max_concurrent_tasks": 4,
+    "default_task_timeout_secs": 60
+  }
+}

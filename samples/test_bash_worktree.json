@@ -1,0 +1,39 @@
+{
+  "tasks": [
+    {
+      "task_id": "setup",
+      "name": "Setup Test",
+      "executor": "bash",
+      "args": {
+        "command": "echo 'Step 1: Setup' && cd /tmp/task-composer-test && git checkout -b test-branch 2>/dev/null || git checkout test-branch && echo '{\"status\": \"ready\"}'"
+      }
+    },
+    {
+      "task_id": "create_worktree",
+      "name": "Create Worktree",
+      "executor": "bash",
+      "dependencies": ["setup"],
+      "args": {
+        "command": "echo 'Step 2: Creating worktree' && cd /tmp/task-composer-test && git worktree add /tmp/worktrees/test -b test-worktree && ls -la /tmp/worktrees/ && echo '{\"worktree\": \"/tmp/worktrees/test\"}'"
+      }
+    },
+    {
+      "task_id": "verify",
+      "name": "Verify Worktree",
+      "executor": "bash",
+      "dependencies": ["create_worktree"],
+      "args": {
+        "command": "echo 'Step 3: Verifying' && ls -la /tmp/worktrees/test && echo '{\"verified\": true}'"
+      }
+    },
+    {
+      "task_id": "cleanup",
+      "name": "Cleanup",
+      "executor": "bash",
+      "dependencies": ["verify"],
+      "args": {
+        "command": "echo 'Step 4: Cleanup' && cd /tmp/task-composer-test && git worktree remove /tmp/worktrees/test --force && git branch -D test-worktree && git checkout main && git branch -D test-branch && rm -rf /tmp/worktrees && echo '{\"cleaned\": true}'"
+      }
+    }
+  ]
+}
