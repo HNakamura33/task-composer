@@ -71,6 +71,9 @@ pub struct DAG {
 
     /// ループ設定
     pub loop_config: Option<LoopConfig>,
+
+    /// 外部入力（サブDAGで親から渡される値）
+    pub inputs: Option<serde_json::Value>,
 }
 
 /// DAG のデフォルト値
@@ -100,6 +103,7 @@ impl DAG {
             registry: Arc::new(ExecutorRegistry::new()),
             config: Config::default(),
             loop_config: None,
+            inputs: None,
         }
     }
 
@@ -124,6 +128,17 @@ impl DAG {
     /// * `registry` - 設定するExecutorRegistry
     pub fn set_registry(&mut self, registry: Arc<ExecutorRegistry>) {
         self.registry = registry;
+    }
+
+    /// サブDAGに外部入力を設定する
+    ///
+    /// 親DAGからサブDAGに値を渡す際に使用します。
+    /// サブDAG内では `$.inputs.{field}` 形式で参照できます。
+    ///
+    /// # Arguments
+    /// * `inputs` - 親から渡される入力値
+    pub fn set_inputs(&mut self, inputs: serde_json::Value) {
+        self.inputs = Some(inputs);
     }
 
     /// タスクをDAGに追加する
@@ -530,6 +545,7 @@ impl DAG {
                     previous_results: &previous_results,
                     current_task: Some(&task),
                     loop_context,
+                    inputs: self.inputs.as_ref(),
                 };
 
                 // if/else条件の評価
@@ -721,6 +737,7 @@ impl DAG {
                 previous_results: &results,
                 current_task: None,
                 loop_context: Some(&loop_context),
+                inputs: self.inputs.as_ref(),
             };
 
             // while条件チェック（falseなら終了）
