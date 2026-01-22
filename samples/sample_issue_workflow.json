@@ -113,7 +113,7 @@
       "executor": "bash",
       "dependencies": ["generate_tests"],
       "args": {
-        "command": "cd /tmp/task-composer-test && git add -A && git commit -m 'Add interface spec and tests' --allow-empty && ISSUE=5 && git worktree add ../worktrees/db -b feature/issue-$ISSUE-db && git worktree add ../worktrees/api -b feature/issue-$ISSUE-api && git worktree add ../worktrees/ui -b feature/issue-$ISSUE-ui && echo '{\"db_path\": \"../worktrees/db\", \"api_path\": \"../worktrees/api\", \"ui_path\": \"../worktrees/ui\"}'"
+        "command": "cd /tmp/task-composer-test && git add -A && git commit -m 'Add interface spec and tests' --allow-empty && mkdir -p /tmp/worktrees && ISSUE=5 && git branch -D feature/issue-$ISSUE-db feature/issue-$ISSUE-api feature/issue-$ISSUE-ui 2>/dev/null; git worktree add /tmp/worktrees/db -b feature/issue-$ISSUE-db && git worktree add /tmp/worktrees/api -b feature/issue-$ISSUE-api && git worktree add /tmp/worktrees/ui -b feature/issue-$ISSUE-ui && ls -la /tmp/worktrees && echo '{\"db_path\": \"/tmp/worktrees/db\", \"api_path\": \"/tmp/worktrees/api\", \"ui_path\": \"/tmp/worktrees/ui\"}'"
       }
     },
     {
@@ -151,7 +151,7 @@
                 "arguments": {
                   "prompt": "Iteration: ${$.loop.iteration}\nFirst iteration: ${$.loop.first}\n\nGoal: Make the database tests pass (TDD Green phase).\n\nWorking directory: worktrees/db (isolated worktree)\nTest command: npm test\n\n1. Read docs/interface-spec.md for the specification\n2. Find and read the database test files to understand what tests need to pass\n3. If first iteration: Implement the database layer to pass the tests\n4. If not first iteration: Fix based on test failures:\n${$.loop.previous.run_tests.output.stdout}\n\nFocus on database layer only. Write minimal code to pass the tests.\nCommit your changes when done.",
                   "options": {
-                    "cwd": "/tmp/task-composer-test/../worktrees/db",
+                    "cwd": "/tmp/worktrees/db",
                     "max_turns": 100,
                     "allowed_tools": ["Read", "Write", "Edit", "Bash"],
                     "permission_mode": "acceptEdits"
@@ -181,7 +181,7 @@
                 "arguments": {
                   "prompt": "Iteration: ${$.loop.iteration}\nFirst iteration: ${$.loop.first}\n\nGoal: Make the API tests pass (TDD Green phase).\n\nWorking directory: worktrees/api (isolated worktree)\nTest command: npm test\n\n1. Read docs/interface-spec.md for the specification\n2. Find and read the API test files to understand what tests need to pass\n3. If first iteration: Implement the API layer to pass the tests\n4. If not first iteration: Fix based on test failures:\n${$.loop.previous.run_tests.output.stdout}\n\nFocus on API layer only. Write minimal code to pass the tests.\nCommit your changes when done.",
                   "options": {
-                    "cwd": "/tmp/task-composer-test/../worktrees/api",
+                    "cwd": "/tmp/worktrees/api",
                     "max_turns": 100,
                     "allowed_tools": ["Read", "Write", "Edit", "Bash"],
                     "permission_mode": "acceptEdits"
@@ -211,7 +211,7 @@
                 "arguments": {
                   "prompt": "Iteration: ${$.loop.iteration}\nFirst iteration: ${$.loop.first}\n\nGoal: Make the UI tests pass (TDD Green phase).\n\nWorking directory: worktrees/ui (isolated worktree)\nTest command: npm test\n\n1. Read docs/interface-spec.md for the specification\n2. Find and read the UI test files to understand what tests need to pass\n3. If first iteration: Implement the UI layer to pass the tests\n4. If not first iteration: Fix based on test failures:\n${$.loop.previous.run_tests.output.stdout}\n\nFocus on UI layer only. Write minimal code to pass the tests.\nCommit your changes when done.",
                   "options": {
-                    "cwd": "/tmp/task-composer-test/../worktrees/ui",
+                    "cwd": "/tmp/worktrees/ui",
                     "max_turns": 100,
                     "allowed_tools": ["Read", "Write", "Edit", "Bash"],
                     "permission_mode": "acceptEdits"
@@ -325,7 +325,7 @@
       "executor": "bash",
       "dependencies": ["implementation_loop"],
       "args": {
-        "command": "cd /tmp/task-composer-test && ISSUE=5 && git worktree remove ../worktrees/db --force && git worktree remove ../worktrees/api --force && git worktree remove ../worktrees/ui --force && git branch -D feature/issue-$ISSUE-db feature/issue-$ISSUE-api feature/issue-$ISSUE-ui && echo '{\"cleaned\": true}'"
+        "command": "cd /tmp/task-composer-test && ISSUE=5 && git worktree remove /tmp/worktrees/db --force && git worktree remove /tmp/worktrees/api --force && git worktree remove /tmp/worktrees/ui --force && git branch -D feature/issue-$ISSUE-db feature/issue-$ISSUE-api feature/issue-$ISSUE-ui && rm -rf /tmp/worktrees && echo '{\"cleaned\": true}'"
       }
     },
     {
