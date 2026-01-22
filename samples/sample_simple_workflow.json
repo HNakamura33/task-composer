@@ -1,0 +1,88 @@
+{
+  "tasks": [
+    {
+      "task_id": "config",
+      "name": "Configuration",
+      "executor": "data",
+      "args": {
+        "number": 1,
+        "repo_path": "/tmp/task-composer-test",
+        "owner": "HNakamura33",
+        "repo": "task-composer-test"
+      }
+    },
+    {
+      "task_id": "get_issue",
+      "name": "Get Issue",
+      "executor": "github",
+      "dependencies": ["config"],
+      "args": {
+        "owner": "$.config.output.owner",
+        "repo": "$.config.output.repo",
+        "action": {
+          "type": "get_issue",
+          "number": "$.config.output.number"
+        }
+      }
+    },
+    {
+      "task_id": "create_branch",
+      "name": "Create Branch",
+      "executor": "git",
+      "dependencies": ["get_issue", "config"],
+      "args": {
+        "action": {
+          "type": "create_branch",
+          "path": "$.config.output.repo_path",
+          "name": "feature/issue-1",
+          "checkout": true
+        }
+      }
+    },
+    {
+      "task_id": "implement",
+      "name": "Implement Feature",
+      "executor": "mcp",
+      "dependencies": ["create_branch", "get_issue", "config"],
+      "args": {
+        "connection": {
+          "type": "stdio",
+          "command": "uv",
+          "args": ["run", "--directory", "mcp_servers/claude_code_mcp", "main.py", "serve"]
+        },
+        "tool": "claude_code_query",
+        "arguments": {
+          "prompt": "Implement the feature based on this issue:\n\nTitle: ${$.get_issue.output.title}\nBody: ${$.get_issue.output.body}\n\n1. Create the implementation files\n2. Create tests\n3. Run tests to verify\n4. Commit your changes",
+          "options": {
+            "cwd": "$.config.output.repo_path",
+            "max_turns": 50,
+            "allowed_tools": ["Read", "Write", "Edit", "Bash"],
+            "permission_mode": "acceptEdits"
+          }
+        }
+      },
+      "timeout_secs": 900
+    },
+    {
+      "task_id": "create_pr",
+      "name": "Create PR",
+      "executor": "github",
+      "dependencies": ["implement", "config", "get_issue"],
+      "args": {
+        "owner": "$.config.output.owner",
+        "repo": "$.config.output.repo",
+        "action": {
+          "type": "create_pr",
+          "title": "${$.get_issue.output.title}",
+          "head": "feature/issue-1",
+          "base": "main",
+          "body": "Implementation for Issue #1\n\nCloses #1"
+        }
+      }
+    }
+  ],
+  "config": {
+    "max_concurrent_tasks": 1,
+    "default_task_timeout_secs": 300
+  }
+}
