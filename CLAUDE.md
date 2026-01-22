@@ -151,7 +151,7 @@ task-composer/
 ```bash
 # 開発時
 cargo test                                  # テスト実行
-cargo run -p task-composer-cli              # samples/sample_dag.json を読み込んで実行
+cargo run -p task-composer-cli              # samples/basics/simple_dag.json を読み込んで実行
 cargo run -p task-composer-cli -- file.json # 指定したJSONを実行
 cargo doc --open                            # ドキュメント生成
 

@@ -764,30 +764,28 @@ task-composer/
 
 ## サンプルファイル
 
-サンプルファイルは `samples/` ディレクトリに配置されています。
+サンプルファイルは `samples/` ディレクトリに配置されています。詳細は [samples/README.md](./samples/README.md) を参照してください。
 
-| ファイル | 説明 |
-|----------|------|
-| `samples/sample_minimal.json` | 最小構成（task_idとexecutorのみ） |
-| `samples/sample_dag.json` | 基本的なDAG（LogExecutor使用） |
-| `samples/sample_mcp_dag.json` | MCP連携によるコード分析・README生成 |
-| `samples/sample_embedded_reference.json` | 埋め込み参照（`${...}`）のデモ |
-| `samples/sample_mcp_with_role.json` | Role情報をMCPに渡すデモ |
-| `samples/sample_mcp_with_hungup_timeout.json` | タイムアウト機能のデモ |
-| `samples/sample_if_else.json` | if/else条件付き実行のデモ |
-| `samples/sample_subgraph.json` | サブグラフ実行のデモ |
-| `samples/sample_nested_subgraph.json` | ネストしたサブグラフのデモ（2レベル） |
-| `samples/sample_loop.json` | ループ実行のデモ |
-| `samples/sample_ralph_loop.json` | Ralph Loopパターンのデモ（MCP連携） |
-| `samples/sample_bash.json` | BashExecutorの基本操作デモ |
-| `samples/sample_git.json` | GitExecutorの基本操作デモ |
-| `samples/sample_git_all_operations.json` | GitExecutorの全操作デモ |
-| `samples/sample_github.json` | GitHubExecutorの基本操作デモ |
-| `samples/sample_github_all_operations.json` | GitHubExecutorの全操作デモ |
-| `samples/sample_analysis_test.json` | 静的解析のエラー検出テスト用 |
-| `samples/sample_error_test.json` | エラー検出テスト用 |
-| `samples/large_dag.json` | パフォーマンステスト用（大規模DAG） |
-| `samples/huge_dag.json` | パフォーマンステスト用（超大規模DAG） |
+```
+samples/
+├── basics/          # 入門・基本サンプル
+│   ├── minimal.json
+│   ├── simple_dag.json
+│   ├── embedded_reference.json
+│   └── auto_dependency.json
+├── executors/       # Executor別サンプル
+│   ├── bash.json
+│   ├── data.json
+│   ├── mcp/         # MCP連携
+│   ├── git/         # Git操作
+│   └── github/      # GitHub API
+├── features/        # 高度な機能
+│   ├── loop/        # ループ実行
+│   ├── condition/   # 条件分岐
+│   └── subgraph/    # サブグラフ
+├── workflows/       # 実践的ワークフロー
+└── _internal/       # 内部テスト用
+```
 
 ## ライセンス
 
