@@ -261,6 +261,39 @@ $.001-101.output.data        # ハイフン付きタスクID
 
 対応フィールド: `task_id`, `name`, `description`, `priority`, `status`, `prompt`, `executor`, `args`, `dependencies`, `role`
 
+### 入力参照（`$.inputs`）
+
+サブDAG内で親DAGから渡された値を参照：
+
+```json
+{
+  "task_id": "sub_workflow",
+  "executor": "dag",
+  "dependencies": ["parent_task"],
+  "args": {
+    "inputs": {
+      "parent_value": "$.parent_task.output.value",
+      "config": "$.parent_task.output.config"
+    },
+    "dag": {
+      "tasks": [{
+        "task_id": "child_task",
+        "executor": "data",
+        "args": {
+          "value": "$.inputs.parent_value",
+          "message": "Config: ${$.inputs.config.name}"
+        }
+      }]
+    }
+  }
+}
+```
+
+- `args.inputs` で親DAGの値をサブDAGに渡す
+- サブDAG内では `$.inputs.{field}` で参照
+- ネストしたフィールドにも対応（`$.inputs.config.name`）
+- 埋め込み参照も可能（`${$.inputs.field}`）
+
 ## 条件付き実行（if/else）
 
 タスクに`if`または`else`フィールドを追加することで、条件に基づいて実行をスキップできます。
@@ -355,16 +388,20 @@ Model Context Protocolを通じて外部MCPサーバーと連携します。
 
 ### DagExecutor
 
-サブグラフ（入れ子DAG）を実行します。最大3レベルまでネスト可能で、サブグラフ内の結果を親DAGから参照できます。
+サブグラフ（入れ子DAG）を実行します。最大3レベルまでネスト可能で、親子DAG間で値を受け渡しできます。
 
 ```json
 {
   "task_id": "data_pipeline",
   "executor": "dag",
+  "dependencies": ["config_task"],
   "args": {
+    "inputs": {
+      "config": "$.config_task.output.value"
+    },
     "dag": {
       "tasks": [
-        {"task_id": "extract", "executor": "log", "dependencies": []},
+        {"task_id": "extract", "executor": "data", "args": {"source": "$.inputs.config"}},
         {"task_id": "transform", "executor": "log", "dependencies": ["extract"]},
         {"task_id": "load", "executor": "log", "dependencies": ["transform"]}
       ],
@@ -374,16 +411,9 @@ Model Context Protocolを通じて外部MCPサーバーと連携します。
 }
 ```
 
-サブグラフの結果は親DAGから以下のように参照できます：
-
-```json
-{
-  "inputs": {
-    "load_result": "$.data_pipeline.output.load.output.task_id",
-    "load_status": "$.data_pipeline.output.load.status"
-  }
-}
-```
+- `args.inputs` で親DAGからサブDAGへ値を渡す
+- サブDAG内では `$.inputs.{field}` で参照
+- サブグラフの結果は親DAGから `$.{task_id}.output.{inner_task}.output.{field}` で参照
 
 ### BashExecutor
 
