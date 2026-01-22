@@ -17,7 +17,7 @@
 //! let order = dag.topological_sort().unwrap();
 //! ```
 
-use crate::path_resolver::{ResolveContext, evaluate_condition, resolve_inputs};
+use crate::path_resolver::{ResolveContext, evaluate_condition, extract_referenced_tasks, resolve_inputs};
 use crate::task_executor::{
     ExecutionContext, ExecutionResult, ExecutionStatus, ExecutorRegistry, TaskExecutor,
 };
@@ -169,6 +169,10 @@ impl DAG {
 
     /// JSON文字列からDAGを作成する
     ///
+    /// タスクのフィールド（`args`, `prompt`, `if`, `else`）内に含まれる
+    /// パス参照（`$.{task_id}.output.*`）から依存関係を自動的に解決します。
+    /// 明示的に指定された`dependencies`と自動解決された依存関係はマージされます。
+    ///
     /// # Arguments
     /// * `json_str` - DAGを定義したJSON文字列
     ///
@@ -181,25 +185,87 @@ impl DAG {
     /// let json = r#"{"tasks": [...]}"#;
     /// let dag = DAG::from_json(json)?;
     /// ```
+    ///
+    /// # 依存関係の自動解決
+    /// 以下のパターンからtask_idを抽出し、dependenciesに自動追加:
+    /// - `$.task_id.output.field` - 直接パス参照
+    /// - `${$.task_id.output.field}` - 埋め込み参照
+    ///
+    /// `$.self.*` と `$.loop.*` は自己参照・ループ参照のため除外されます。
     pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
         let dag_json: DAGJson = serde_json::from_str(json_str)?;
         let mut dag = DAG::new();
         dag.config = dag_json.config;
         dag.loop_config = dag_json.loop_config;
 
-        for task in dag_json.tasks {
-            let dependencies = task.dependencies.clone();
+        // 全タスクIDを収集（存在確認用）
+        let all_task_ids: std::collections::HashSet<String> = dag_json
+            .tasks
+            .iter()
+            .map(|t| t.task_id.clone())
+            .collect();
+
+        for mut task in dag_json.tasks {
             let task_id = task.task_id.clone();
 
+            // 依存関係を自動解決
+            let implicit_deps = Self::extract_implicit_dependencies(&task);
+
+            // 明示的dependenciesと暗黙的dependenciesをマージ
+            for dep in implicit_deps {
+                // 存在するタスクIDのみ追加（外部参照や存在しないタスクは除外）
+                if all_task_ids.contains(&dep) && !task.dependencies.contains(&dep) {
+                    task.dependencies.push(dep);
+                }
+            }
+
+            let dependencies = task.dependencies.clone();
             dag.add_task(task);
 
             // 依存関係をエッジとして追加
-            for dep in dependencies.clone() {
+            for dep in dependencies {
                 dag.add_edge(&dep, &task_id);
             }
         }
 
         Ok(dag)
+    }
+
+    /// タスクのフィールドから暗黙的な依存関係を抽出する
+    ///
+    /// 以下のフィールドからパス参照を検索:
+    /// - `args` - タスクの引数
+    /// - `prompt` - プロンプト文字列
+    /// - `if` - 実行条件
+    /// - `else` - else条件
+    fn extract_implicit_dependencies(task: &Task) -> std::collections::HashSet<String> {
+        let mut deps = std::collections::HashSet::new();
+
+        // argsから抽出
+        deps.extend(extract_referenced_tasks(&task.args));
+
+        // promptから抽出
+        if let Some(ref prompt) = task.prompt {
+            deps.extend(extract_referenced_tasks(&serde_json::Value::String(
+                prompt.clone(),
+            )));
+        }
+
+        // if条件から抽出
+        if let Some(ref if_cond) = task.if_condition {
+            deps.extend(extract_referenced_tasks(&serde_json::Value::String(
+                if_cond.clone(),
+            )));
+        }
+
+        // else条件から抽出
+        if let Some(ref else_cond) = task.else_condition {
+            deps.extend(extract_referenced_tasks(&serde_json::Value::String(
+                else_cond.clone(),
+            )));
+        }
+
+        deps
     }
 
     /// タスクの依存先を取得する

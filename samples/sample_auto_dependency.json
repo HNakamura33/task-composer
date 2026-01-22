@@ -1,0 +1,43 @@
+{
+  "tasks": [
+    {
+      "task_id": "data_source",
+      "name": "Data Source",
+      "description": "Provide initial data",
+      "executor": "log",
+      "args": {
+        "message": "Hello from data_source"
+      }
+    },
+    {
+      "task_id": "processor",
+      "name": "Processor",
+      "description": "Process data from source (dependency auto-resolved from args)",
+      "executor": "log",
+      "args": {
+        "input_task": "$.data_source.output.task_id"
+      }
+    },
+    {
+      "task_id": "formatter",
+      "name": "Formatter",
+      "description": "Format output (dependency auto-resolved from prompt)",
+      "executor": "log",
+      "prompt": "Format the result from: ${$.processor.output.task_id}",
+      "args": {}
+    },
+    {
+      "task_id": "reporter",
+      "name": "Reporter",
+      "description": "Generate report (dependencies auto-resolved from multiple sources)",
+      "executor": "log",
+      "prompt": "Report: source=${$.data_source.output.task_id}, formatted=${$.formatter.output.task_id}",
+      "args": {
+        "processor_id": "$.processor.output.task_id"
+      }
+    }
+  ],
+  "config": {
+    "max_concurrent_tasks": 2
+  }
+}

@@ -97,6 +97,15 @@ task-composer/
 - `${...}` - 文字列内への埋め込み参照
 - ネストしたフィールド、配列インデックス対応
 
+### 依存関係の自動解決
+- フィールド内のパス参照から依存関係を自動的に推論
+- 対象フィールド: `args`, `prompt`, `if`, `else`
+- 直接参照（`$.task_id.output.field`）と埋め込み参照（`${$.task_id.output.field}`）に対応
+- `$.self.*` と `$.loop.*` は自己参照・ループ参照のため除外
+- 明示的な`dependencies`と自動解決された依存関係はマージされる
+- 存在しないタスクへの参照は無視される（警告なし）
+- `extract_referenced_tasks()` - JSON値から参照タスクIDを抽出
+
 ### 条件付き実行（if/else）
 - `if` フィールド - 条件がtrueなら実行、falseならスキップ
 - `else` フィールド - 条件がtrueならスキップ、falseなら実行

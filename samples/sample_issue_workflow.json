@@ -34,7 +34,7 @@
       "name": "Create Feature Branch",
       "description": "Create a feature branch for implementation",
       "executor": "git",
-      "dependencies": ["get_issue", "issue_input"],
+      "dependencies": ["get_issue"],
       "args": {
         "action": {
           "type": "create_branch",
@@ -49,7 +49,7 @@
       "name": "Design Interface",
       "description": "Design API specification and data models",
       "executor": "mcp",
-      "dependencies": ["create_branch", "issue_input", "get_issue"],
+      "dependencies": ["create_branch"],
       "args": {
         "connection": {
           "type": "stdio",
@@ -80,7 +80,7 @@
       "name": "Generate Test Cases (TDD: Red)",
       "description": "Generate test cases from interface specification before implementation",
       "executor": "mcp",
-      "dependencies": ["design_interface", "issue_input"],
+      "dependencies": ["design_interface"],
       "args": {
         "connection": {
           "type": "stdio",
@@ -111,7 +111,7 @@
       "name": "Setup Git Worktrees",
       "description": "Create separate worktrees for parallel development to avoid conflicts",
       "executor": "bash",
-      "dependencies": ["generate_tests", "issue_input"],
+      "dependencies": ["generate_tests"],
       "args": {
         "command": "cd /tmp/task-composer-test && git add -A && git commit -m 'Add interface spec and tests' --allow-empty && ISSUE=5 && git worktree add ../worktrees/db -b feature/issue-$ISSUE-db && git worktree add ../worktrees/api -b feature/issue-$ISSUE-api && git worktree add ../worktrees/ui -b feature/issue-$ISSUE-ui && echo '{\"db_path\": \"../worktrees/db\", \"api_path\": \"../worktrees/api\", \"ui_path\": \"../worktrees/ui\"}'"
       }
@@ -121,7 +121,7 @@
       "name": "Implementation Loop (TDD: Green)",
       "description": "Implement in separate worktrees until all tests pass (max 5 iterations)",
       "executor": "dag",
-      "dependencies": ["setup_worktrees", "issue_input"],
+      "dependencies": ["setup_worktrees"],
       "args": {
         "dag": {
           "loop_config": {
@@ -323,7 +323,7 @@
       "name": "Cleanup Git Worktrees",
       "description": "Remove worktrees after successful implementation",
       "executor": "bash",
-      "dependencies": ["implementation_loop", "issue_input"],
+      "dependencies": ["implementation_loop"],
       "args": {
         "command": "cd /tmp/task-composer-test && ISSUE=5 && git worktree remove ../worktrees/db --force && git worktree remove ../worktrees/api --force && git worktree remove ../worktrees/ui --force && git branch -D feature/issue-$ISSUE-db feature/issue-$ISSUE-api feature/issue-$ISSUE-ui && echo '{\"cleaned\": true}'"
       }
@@ -333,12 +333,7 @@
       "name": "Create Pull Request",
       "description": "Create a pull request for the feature",
       "executor": "github",
-      "dependencies": [
-        "cleanup_worktrees",
-        "issue_input",
-        "get_issue",
-        "implementation_loop"
-      ],
+      "dependencies": ["cleanup_worktrees"],
       "args": {
         "owner": "$.issue_input.output.owner",
         "repo": "$.issue_input.output.repo",

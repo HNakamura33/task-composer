@@ -1432,3 +1432,340 @@ async fn test_execute_async_no_loop_config() {
     assert_eq!(counter.load(Ordering::SeqCst), 1);
     assert_eq!(results.len(), 1);
 }
+
+// ============================================
+// 依存関係自動解決のテスト
+// ============================================
+
+#[test]
+fn test_from_json_auto_dependency_from_args() {
+    // argsのパス参照から依存関係が自動的に解決されることをテスト
+    let json = r#"
+    {
+        "tasks": [
+            {
+                "task_id": "task_a",
+                "executor": "log",
+                "args": {}
+            },
+            {
+                "task_id": "task_b",
+                "executor": "log",
+                "args": {
+                    "value": "$.task_a.output.result"
+                }
+            }
+        ]
+    }
+    "#;
+
+    let dag = DAG::from_json(json).unwrap();
+
+    // task_b は task_a を参照しているので、自動的に依存関係が追加される
+    let task_b = dag.nodes.get("task_b").unwrap();
+    assert!(task_b.dependencies.contains(&"task_a".to_string()));
+
+    // エッジも追加されているはず
+    let edges_from_a = dag.edges.get("task_a").unwrap();
+    assert!(edges_from_a.contains(&"task_b".to_string()));
+}
+
+#[test]
+fn test_from_json_auto_dependency_from_prompt() {
+    // promptのパス参照から依存関係が自動的に解決されることをテスト
+    let json = r#"
+    {
+        "tasks": [
+            {
+                "task_id": "prepare",
+                "executor": "log",
+                "args": {}
+            },
+            {
+                "task_id": "process",
+                "executor": "log",
+                "prompt": "Process data: ${$.prepare.output.data}",
+                "args": {}
+            }
+        ]
+    }
+    "#;
+
+    let dag = DAG::from_json(json).unwrap();
+
+    let task_process = dag.nodes.get("process").unwrap();
+    assert!(task_process.dependencies.contains(&"prepare".to_string()));
+}
+
+#[test]
+fn test_from_json_auto_dependency_from_if_condition() {
+    // if条件のパス参照から依存関係が自動的に解決されることをテスト
+    let json = r#"
+    {
+        "tasks": [
+            {
+                "task_id": "validate",
+                "executor": "log",
+                "args": {}
+            },
+            {
+                "task_id": "on_success",
+                "executor": "log",
+                "args": {},
+                "if": "$.validate.output.ok == true"
+            }
+        ]
+    }
+    "#;
+
+    let dag = DAG::from_json(json).unwrap();
+
+    let task_on_success = dag.nodes.get("on_success").unwrap();
+    assert!(task_on_success.dependencies.contains(&"validate".to_string()));
+}
+
+#[test]
+fn test_from_json_auto_dependency_from_else_condition() {
+    // else条件のパス参照から依存関係が自動的に解決されることをテスト
+    let json = r#"
+    {
+        "tasks": [
+            {
+                "task_id": "validate",
+                "executor": "log",
+                "args": {}
+            },
+            {
+                "task_id": "on_failure",
+                "executor": "log",
+                "args": {},
+                "else": "$.validate.output.ok == true"
+            }
+        ]
+    }
+    "#;
+
+    let dag = DAG::from_json(json).unwrap();
+
+    let task_on_failure = dag.nodes.get("on_failure").unwrap();
+    assert!(task_on_failure.dependencies.contains(&"validate".to_string()));
+}
+
+#[test]
+fn test_from_json_auto_dependency_multiple_references() {
+    // 複数のタスクを参照している場合、全ての依存関係が追加されることをテスト
+    let json = r#"
+    {
+        "tasks": [
+            {
+                "task_id": "task_a",
+                "executor": "log",
+                "args": {}
+            },
+            {
+                "task_id": "task_b",
+                "executor": "log",
+                "args": {}
+            },
+            {
+                "task_id": "task_c",
+                "executor": "log",
+                "args": {
+                    "a_value": "$.task_a.output.x",
+                    "b_value": "$.task_b.output.y"
+                }
+            }
+        ]
+    }
+    "#;
+
+    let dag = DAG::from_json(json).unwrap();
+
+    let task_c = dag.nodes.get("task_c").unwrap();
+    assert!(task_c.dependencies.contains(&"task_a".to_string()));
+    assert!(task_c.dependencies.contains(&"task_b".to_string()));
+}
+
+#[test]
+fn test_from_json_auto_dependency_merge_with_explicit() {
+    // 明示的な依存関係と自動解決された依存関係がマージされることをテスト
+    let json = r#"
+    {
+        "tasks": [
+            {
+                "task_id": "explicit_dep",
+                "executor": "log",
+                "args": {}
+            },
+            {
+                "task_id": "implicit_dep",
+                "executor": "log",
+                "args": {}
+            },
+            {
+                "task_id": "consumer",
+                "executor": "log",
+                "dependencies": ["explicit_dep"],
+                "args": {
+                    "value": "$.implicit_dep.output.x"
+                }
+            }
+        ]
+    }
+    "#;
+
+    let dag = DAG::from_json(json).unwrap();
+
+    let task_consumer = dag.nodes.get("consumer").unwrap();
+    // 明示的な依存関係
+    assert!(task_consumer.dependencies.contains(&"explicit_dep".to_string()));
+    // 自動解決された依存関係
+    assert!(task_consumer.dependencies.contains(&"implicit_dep".to_string()));
+}
+
+#[test]
+fn test_from_json_auto_dependency_no_duplicate() {
+    // 明示的に指定された依存関係と同じタスクを参照している場合、重複しないことをテスト
+    let json = r#"
+    {
+        "tasks": [
+            {
+                "task_id": "task_a",
+                "executor": "log",
+                "args": {}
+            },
+            {
+                "task_id": "task_b",
+                "executor": "log",
+                "dependencies": ["task_a"],
+                "args": {
+                    "value": "$.task_a.output.x"
+                }
+            }
+        ]
+    }
+    "#;
+
+    let dag = DAG::from_json(json).unwrap();
+
+    let task_b = dag.nodes.get("task_b").unwrap();
+    // task_a は1回だけ含まれる（重複なし）
+    let count = task_b.dependencies.iter().filter(|d| *d == "task_a").count();
+    assert_eq!(count, 1);
+}
+
+#[test]
+fn test_from_json_auto_dependency_excludes_self() {
+    // $.self参照は依存関係に追加されないことをテスト
+    let json = r#"
+    {
+        "tasks": [
+            {
+                "task_id": "task_a",
+                "executor": "log",
+                "args": {
+                    "my_id": "$.self.task_id"
+                }
+            }
+        ]
+    }
+    "#;
+
+    let dag = DAG::from_json(json).unwrap();
+
+    let task_a = dag.nodes.get("task_a").unwrap();
+    // selfは依存関係に含まれない
+    assert!(!task_a.dependencies.contains(&"self".to_string()));
+    assert!(task_a.dependencies.is_empty());
+}
+
+#[test]
+fn test_from_json_auto_dependency_excludes_loop() {
+    // $.loop参照は依存関係に追加されないことをテスト
+    let json = r#"
+    {
+        "loop_config": {
+            "max_iterations": 3
+        },
+        "tasks": [
+            {
+                "task_id": "counter",
+                "executor": "log",
+                "args": {
+                    "iteration": "$.loop.iteration"
+                }
+            }
+        ]
+    }
+    "#;
+
+    let dag = DAG::from_json(json).unwrap();
+
+    let task_counter = dag.nodes.get("counter").unwrap();
+    // loopは依存関係に含まれない
+    assert!(!task_counter.dependencies.contains(&"loop".to_string()));
+    assert!(task_counter.dependencies.is_empty());
+}
+
+#[test]
+fn test_from_json_auto_dependency_excludes_nonexistent_task() {
+    // 存在しないタスクへの参照は依存関係に追加されないことをテスト
+    let json = r#"
+    {
+        "tasks": [
+            {
+                "task_id": "task_a",
+                "executor": "log",
+                "args": {
+                    "value": "$.nonexistent_task.output.x"
+                }
+            }
+        ]
+    }
+    "#;
+
+    let dag = DAG::from_json(json).unwrap();
+
+    let task_a = dag.nodes.get("task_a").unwrap();
+    // 存在しないタスクは依存関係に含まれない
+    assert!(!task_a.dependencies.contains(&"nonexistent_task".to_string()));
+    assert!(task_a.dependencies.is_empty());
+}
+
+#[tokio::test]
+async fn test_execute_async_with_auto_dependency() {
+    // 自動解決された依存関係でも正しく実行されることをテスト
+    let json = r#"
+    {
+        "tasks": [
+            {
+                "task_id": "producer",
+                "name": "Producer",
+                "executor": "log",
+                "args": {}
+            },
+            {
+                "task_id": "consumer",
+                "name": "Consumer",
+                "executor": "log",
+                "prompt": "Consume ${$.producer.output.task_id}",
+                "args": {}
+            }
+        ]
+    }
+    "#;
+
+    let mut dag = DAG::from_json(json).unwrap();
+
+    // consumerがproducerに依存していることを確認
+    let consumer = dag.nodes.get("consumer").unwrap();
+    assert!(consumer.dependencies.contains(&"producer".to_string()));
+
+    dag.register_executor(Box::new(LogExecutor::new()));
+
+    let results = dag.execute_async().await.unwrap();
+
+    assert_eq!(results.len(), 2);
+    assert_eq!(results.get("producer").unwrap().status, ExecutionStatus::Success);
+    assert_eq!(results.get("consumer").unwrap().status, ExecutionStatus::Success);
+}
