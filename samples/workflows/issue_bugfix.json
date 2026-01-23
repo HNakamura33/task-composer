@@ -1,0 +1,112 @@
+{
+  "tasks": [
+    {
+      "task_id": "security_patch",
+      "name": "Security Patch",
+      "description": "Apply urgent security patch for CVE-2024-XXXX",
+      "priority": 0,
+      "executor": "github",
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[P0][Security] Patch CVE-2024-XXXX",
+          "body": "## Overview\nUrgent security patch for authentication bypass vulnerability.\n\n## Priority\n**P0 - Critical**\n\n## CVE Details\n- CVE ID: CVE-2024-XXXX\n- Severity: High\n- CVSS Score: 8.5\n\n## Tasks\n- [ ] Apply security patch\n- [ ] Update dependencies\n- [ ] Security audit"
+        }
+      }
+    },
+    {
+      "task_id": "refactor_foundation",
+      "name": "Refactoring Foundation",
+      "description": "Set up foundation for refactoring work",
+      "priority": 2,
+      "executor": "github",
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Refactor] Foundation Setup for Tech Debt",
+          "body": "## Overview\nSet up foundation for technical debt reduction.\n\n## Priority\n**P2 - Normal**\n\n## Scope\n- Establish coding standards\n- Set up linting rules\n- Create refactoring guidelines\n\n## Goals\n- Improve maintainability\n- Reduce technical debt\n- Standardize patterns"
+        }
+      }
+    },
+    {
+      "task_id": "auth_module_fix",
+      "name": "Auth Module Fix",
+      "description": "Fix authentication module based on security patch",
+      "priority": 0,
+      "executor": "github",
+      "dependencies": ["security_patch"],
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[P0][Fix] Auth Module Security Hardening",
+          "body": "## Overview\nHarden authentication module after security patch.\n\n## Parent Issue\nDepends on: #${$.security_patch.output.number}\n\n## Priority\n**P0 - Critical**\n\n## Tasks\n- [ ] Implement additional validation\n- [ ] Add rate limiting\n- [ ] Enhance session management\n- [ ] Add security logging"
+        }
+      }
+    },
+    {
+      "task_id": "logging_improvement",
+      "name": "Logging Improvement",
+      "description": "Improve logging module as part of refactoring",
+      "priority": 2,
+      "executor": "github",
+      "dependencies": ["refactor_foundation"],
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Refactor] Improve Logging Module",
+          "body": "## Overview\nModernize logging module.\n\n## Parent Issue\nDepends on: #${$.refactor_foundation.output.number}\n\n## Priority\n**P2 - Normal**\n\n## Tasks\n- [ ] Structured logging format\n- [ ] Log levels standardization\n- [ ] Performance optimization\n- [ ] Log rotation setup"
+        }
+      }
+    },
+    {
+      "task_id": "error_handling_improvement",
+      "name": "Error Handling Improvement",
+      "description": "Improve error handling as part of refactoring",
+      "priority": 2,
+      "executor": "github",
+      "dependencies": ["refactor_foundation"],
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Refactor] Improve Error Handling",
+          "body": "## Overview\nStandardize error handling patterns.\n\n## Parent Issue\nDepends on: #${$.refactor_foundation.output.number}\n\n## Priority\n**P2 - Normal**\n\n## Tasks\n- [ ] Define error types\n- [ ] Implement error boundaries\n- [ ] Add error reporting\n- [ ] User-friendly error messages"
+        }
+      }
+    },
+    {
+      "task_id": "regression_test",
+      "name": "Regression Testing",
+      "description": "Run comprehensive regression tests",
+      "priority": 1,
+      "executor": "github",
+      "dependencies": [
+        "auth_module_fix",
+        "logging_improvement",
+        "error_handling_improvement"
+      ],
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "[Test] Regression Tests - Security & Refactoring",
+          "body": "## Overview\nComprehensive regression testing after security fixes and refactoring.\n\n## Dependencies\n- Auth Fix: #${$.auth_module_fix.output.number}\n- Logging: #${$.logging_improvement.output.number}\n- Error Handling: #${$.error_handling_improvement.output.number}\n\n## Priority\n**P1 - High**\n\n## Test Coverage\n- [ ] Security regression tests\n- [ ] Functional regression tests\n- [ ] Performance regression tests\n- [ ] Integration tests"
+        }
+      }
+    }
+  ],
+  "config": {
+    "max_concurrent_tasks": 3,
+    "default_task_timeout_secs": 60
+  }
+}

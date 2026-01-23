@@ -43,20 +43,29 @@ impl TaskExecutor for DagExecutor {
         let dag_value = ctx.args.get("dag")
             .ok_or_else(|| "Missing 'dag' field in args".to_string())?;
 
-        // 2. DAGを作成
+        // 2. ctx.argsから"inputs"フィールドを取得（オプショナル）
+        // 親DAGで既に解決済みの値
+        let inputs = ctx.args.get("inputs").cloned();
+
+        // 3. DAGを作成
         let dag_str = serde_json::to_string(dag_value)
             .map_err(|e| format!("Failed to serialize dag: {}", e))?;
         let mut sub_dag = DAG::from_json(&dag_str)
             .map_err(|e| format!("Failed to parse sub-DAG: {}", e))?;
 
-        // 3. Executorを登録（親のregistryを共有）
+        // 4. Executorを登録（親のregistryを共有）
         sub_dag.set_registry(Arc::clone(&self.registry));
 
-        // 4. execute_async()を呼ぶ
+        // 5. 外部入力を設定（サブDAG内で $.inputs.xxx で参照可能）
+        if let Some(inputs_value) = inputs {
+            sub_dag.set_inputs(inputs_value);
+        }
+
+        // 6. execute_async()を呼ぶ
         let results = sub_dag.execute_async().await
             .map_err(|e| format!("Sub-DAG execution failed: {}", e))?;
 
-        // 5. 結果をExecutionResultにまとめる
+        // 7. 結果をExecutionResultにまとめる
         Ok(ExecutionResult {
             task_id: task.task_id.clone(),
             status: ExecutionStatus::Success,
@@ -186,5 +195,96 @@ mod tests {
 
         let result = executor.execute_task(&task, &ctx).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_dag_executor_with_inputs() {
+        // DataExecutorを追加
+        use crate::task_executor::DataExecutor;
+        let mut registry = ExecutorRegistry::new();
+        registry.register(Box::new(DataExecutor::new()));
+        let registry = Arc::new(registry);
+
+        let executor = DagExecutor::new(Arc::clone(&registry));
+        let task = create_test_task();
+
+        // サブDAGで$.inputs.parent_valueを参照する
+        let sub_dag_json = serde_json::json!({
+            "tasks": [
+                {
+                    "task_id": "child_task",
+                    "executor": "data",
+                    "args": {
+                        "value": "$.inputs.parent_value"
+                    }
+                }
+            ]
+        });
+
+        // 親から渡すinputs
+        let ctx = ExecutionContext {
+            args: serde_json::json!({
+                "inputs": {
+                    "parent_value": 42
+                },
+                "dag": sub_dag_json
+            }),
+            env_vars: HashMap::new(),
+        };
+
+        let result = executor.execute_task(&task, &ctx).await;
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+
+        let execution_result = result.unwrap();
+        assert_eq!(execution_result.status, ExecutionStatus::Success);
+
+        // サブDAGの結果を確認
+        let output = &execution_result.output;
+        let child_result = output.get("child_task").unwrap();
+        let child_output = child_result.get("output").unwrap();
+        assert_eq!(child_output.get("value").unwrap(), &serde_json::json!(42));
+    }
+
+    #[tokio::test]
+    async fn test_dag_executor_with_nested_inputs() {
+        use crate::task_executor::DataExecutor;
+        let mut registry = ExecutorRegistry::new();
+        registry.register(Box::new(DataExecutor::new()));
+        let registry = Arc::new(registry);
+
+        let executor = DagExecutor::new(Arc::clone(&registry));
+        let task = create_test_task();
+
+        // サブDAG内で埋め込み参照を使用
+        let sub_dag_json = serde_json::json!({
+            "tasks": [
+                {
+                    "task_id": "child_task",
+                    "executor": "data",
+                    "args": {
+                        "value": "Hello ${$.inputs.name}!"
+                    }
+                }
+            ]
+        });
+
+        let ctx = ExecutionContext {
+            args: serde_json::json!({
+                "inputs": {
+                    "name": "World"
+                },
+                "dag": sub_dag_json
+            }),
+            env_vars: HashMap::new(),
+        };
+
+        let result = executor.execute_task(&task, &ctx).await;
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+
+        let execution_result = result.unwrap();
+        let output = &execution_result.output;
+        let child_result = output.get("child_task").unwrap();
+        let child_output = child_result.get("output").unwrap();
+        assert_eq!(child_output.get("value").unwrap(), &serde_json::json!("Hello World!"));
     }
 }

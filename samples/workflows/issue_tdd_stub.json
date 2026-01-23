@@ -1,0 +1,134 @@
+{
+  "tasks": [
+    {
+      "task_id": "issue_input",
+      "name": "Issue Number Input",
+      "executor": "data",
+      "args": {
+        "number": 5,
+        "repo_path": "/tmp/task-composer-test",
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "test_command": "npm test",
+        "test_framework": "jest"
+      }
+    },
+    {
+      "task_id": "get_issue",
+      "name": "Get Issue Details (stub)",
+      "executor": "data",
+      "dependencies": ["issue_input"],
+      "args": {
+        "title": "Simple Counter API",
+        "body": "Build a simple counter API"
+      }
+    },
+    {
+      "task_id": "create_branch",
+      "name": "Create Feature Branch (stub)",
+      "executor": "log",
+      "dependencies": ["get_issue"],
+      "args": {
+        "message": "Creating branch feature/issue-${$.issue_input.output.number}"
+      }
+    },
+    {
+      "task_id": "design_interface",
+      "name": "Design Interface (stub)",
+      "executor": "data",
+      "dependencies": ["create_branch"],
+      "args": {
+        "spec": "interface spec content"
+      }
+    },
+    {
+      "task_id": "generate_tests",
+      "name": "Generate Test Cases (stub)",
+      "executor": "data",
+      "dependencies": ["design_interface"],
+      "args": {
+        "tests": "test cases generated"
+      }
+    },
+    {
+      "task_id": "setup_worktrees",
+      "name": "Setup Git Worktrees",
+      "executor": "bash",
+      "dependencies": ["generate_tests"],
+      "args": {
+        "command": "cd ${$.issue_input.output.repo_path} && ISSUE=${$.issue_input.output.number} && git worktree remove /tmp/worktrees/db --force 2>/dev/null; git worktree remove /tmp/worktrees/api --force 2>/dev/null; git worktree remove /tmp/worktrees/ui --force 2>/dev/null; git worktree prune && git branch -D feature/issue-$ISSUE-db feature/issue-$ISSUE-api feature/issue-$ISSUE-ui 2>/dev/null; mkdir -p /tmp/worktrees && git worktree add /tmp/worktrees/db -b feature/issue-$ISSUE-db >/dev/null 2>&1 && git worktree add /tmp/worktrees/api -b feature/issue-$ISSUE-api >/dev/null 2>&1 && git worktree add /tmp/worktrees/ui -b feature/issue-$ISSUE-ui >/dev/null 2>&1 && echo '{\"db_path\": \"/tmp/worktrees/db\", \"api_path\": \"/tmp/worktrees/api\", \"ui_path\": \"/tmp/worktrees/ui\"}'"
+      }
+    },
+    {
+      "task_id": "implementation_loop",
+      "name": "Implementation Loop (stub)",
+      "executor": "dag",
+      "dependencies": ["setup_worktrees"],
+      "args": {
+        "inputs": {
+          "db_path": "$.setup_worktrees.output.parsed.db_path",
+          "api_path": "$.setup_worktrees.output.parsed.api_path",
+          "ui_path": "$.setup_worktrees.output.parsed.ui_path",
+          "repo_path": "$.issue_input.output.repo_path",
+          "issue_number": "$.issue_input.output.number",
+          "test_command": "$.issue_input.output.test_command"
+        },
+        "dag": {
+          "tasks": [
+            {
+              "task_id": "implement_db",
+              "name": "Implement DB (stub)",
+              "executor": "log",
+              "args": {
+                "message": "Implementing DB at ${$.inputs.db_path}"
+              }
+            },
+            {
+              "task_id": "implement_api",
+              "name": "Implement API (stub)",
+              "executor": "log",
+              "args": {
+                "message": "Implementing API at ${$.inputs.api_path}"
+              }
+            },
+            {
+              "task_id": "run_tests",
+              "name": "Run Tests (stub)",
+              "executor": "data",
+              "dependencies": ["implement_db", "implement_api"],
+              "args": {
+                "passed": true,
+                "output": "All tests passed"
+              }
+            }
+          ],
+          "config": {
+            "max_concurrent_tasks": 2
+          }
+        }
+      }
+    },
+    {
+      "task_id": "cleanup_worktrees",
+      "name": "Cleanup Git Worktrees",
+      "executor": "bash",
+      "dependencies": ["implementation_loop"],
+      "args": {
+        "command": "cd ${$.issue_input.output.repo_path} && ISSUE=${$.issue_input.output.number} && git worktree remove /tmp/worktrees/db --force 2>/dev/null; git worktree remove /tmp/worktrees/api --force 2>/dev/null; git worktree remove /tmp/worktrees/ui --force 2>/dev/null; git worktree prune && git branch -D feature/issue-$ISSUE-db feature/issue-$ISSUE-api feature/issue-$ISSUE-ui 2>/dev/null; rm -rf /tmp/worktrees && echo '{\"cleaned\": true}'"
+      }
+    },
+    {
+      "task_id": "create_pr",
+      "name": "Create Pull Request (stub)",
+      "executor": "log",
+      "dependencies": ["cleanup_worktrees"],
+      "args": {
+        "message": "PR created for issue #${$.issue_input.output.number}"
+      }
+    }
+  ],
+  "config": {
+    "max_concurrent_tasks": 3,
+    "default_task_timeout_secs": 60
+  }
+}

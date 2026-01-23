@@ -17,7 +17,7 @@
 //! let order = dag.topological_sort().unwrap();
 //! ```
 
-use crate::path_resolver::{ResolveContext, evaluate_condition, resolve_inputs};
+use crate::path_resolver::{ResolveContext, evaluate_condition, extract_referenced_tasks, resolve_inputs};
 use crate::task_executor::{
     ExecutionContext, ExecutionResult, ExecutionStatus, ExecutorRegistry, TaskExecutor,
 };
@@ -71,6 +71,9 @@ pub struct DAG {
 
     /// ループ設定
     pub loop_config: Option<LoopConfig>,
+
+    /// 外部入力（サブDAGで親から渡される値）
+    pub inputs: Option<serde_json::Value>,
 }
 
 /// DAG のデフォルト値
@@ -100,6 +103,7 @@ impl DAG {
             registry: Arc::new(ExecutorRegistry::new()),
             config: Config::default(),
             loop_config: None,
+            inputs: None,
         }
     }
 
@@ -124,6 +128,17 @@ impl DAG {
     /// * `registry` - 設定するExecutorRegistry
     pub fn set_registry(&mut self, registry: Arc<ExecutorRegistry>) {
         self.registry = registry;
+    }
+
+    /// サブDAGに外部入力を設定する
+    ///
+    /// 親DAGからサブDAGに値を渡す際に使用します。
+    /// サブDAG内では `$.inputs.{field}` 形式で参照できます。
+    ///
+    /// # Arguments
+    /// * `inputs` - 親から渡される入力値
+    pub fn set_inputs(&mut self, inputs: serde_json::Value) {
+        self.inputs = Some(inputs);
     }
 
     /// タスクをDAGに追加する
@@ -169,6 +184,10 @@ impl DAG {
 
     /// JSON文字列からDAGを作成する
     ///
+    /// タスクのフィールド（`args`, `prompt`, `if`, `else`）内に含まれる
+    /// パス参照（`$.{task_id}.output.*`）から依存関係を自動的に解決します。
+    /// 明示的に指定された`dependencies`と自動解決された依存関係はマージされます。
+    ///
     /// # Arguments
     /// * `json_str` - DAGを定義したJSON文字列
     ///
@@ -181,25 +200,87 @@ impl DAG {
     /// let json = r#"{"tasks": [...]}"#;
     /// let dag = DAG::from_json(json)?;
     /// ```
+    ///
+    /// # 依存関係の自動解決
+    /// 以下のパターンからtask_idを抽出し、dependenciesに自動追加:
+    /// - `$.task_id.output.field` - 直接パス参照
+    /// - `${$.task_id.output.field}` - 埋め込み参照
+    ///
+    /// `$.self.*` と `$.loop.*` は自己参照・ループ参照のため除外されます。
     pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
         let dag_json: DAGJson = serde_json::from_str(json_str)?;
         let mut dag = DAG::new();
         dag.config = dag_json.config;
         dag.loop_config = dag_json.loop_config;
 
-        for task in dag_json.tasks {
-            let dependencies = task.dependencies.clone();
+        // 全タスクIDを収集（存在確認用）
+        let all_task_ids: std::collections::HashSet<String> = dag_json
+            .tasks
+            .iter()
+            .map(|t| t.task_id.clone())
+            .collect();
+
+        for mut task in dag_json.tasks {
             let task_id = task.task_id.clone();
 
+            // 依存関係を自動解決
+            let implicit_deps = Self::extract_implicit_dependencies(&task);
+
+            // 明示的dependenciesと暗黙的dependenciesをマージ
+            for dep in implicit_deps {
+                // 存在するタスクIDのみ追加（外部参照や存在しないタスクは除外）
+                if all_task_ids.contains(&dep) && !task.dependencies.contains(&dep) {
+                    task.dependencies.push(dep);
+                }
+            }
+
+            let dependencies = task.dependencies.clone();
             dag.add_task(task);
 
             // 依存関係をエッジとして追加
-            for dep in dependencies.clone() {
+            for dep in dependencies {
                 dag.add_edge(&dep, &task_id);
             }
         }
 
         Ok(dag)
+    }
+
+    /// タスクのフィールドから暗黙的な依存関係を抽出する
+    ///
+    /// 以下のフィールドからパス参照を検索:
+    /// - `args` - タスクの引数
+    /// - `prompt` - プロンプト文字列
+    /// - `if` - 実行条件
+    /// - `else` - else条件
+    fn extract_implicit_dependencies(task: &Task) -> std::collections::HashSet<String> {
+        let mut deps = std::collections::HashSet::new();
+
+        // argsから抽出
+        deps.extend(extract_referenced_tasks(&task.args));
+
+        // promptから抽出
+        if let Some(ref prompt) = task.prompt {
+            deps.extend(extract_referenced_tasks(&serde_json::Value::String(
+                prompt.clone(),
+            )));
+        }
+
+        // if条件から抽出
+        if let Some(ref if_cond) = task.if_condition {
+            deps.extend(extract_referenced_tasks(&serde_json::Value::String(
+                if_cond.clone(),
+            )));
+        }
+
+        // else条件から抽出
+        if let Some(ref else_cond) = task.else_condition {
+            deps.extend(extract_referenced_tasks(&serde_json::Value::String(
+                else_cond.clone(),
+            )));
+        }
+
+        deps
     }
 
     /// タスクの依存先を取得する
@@ -407,6 +488,10 @@ impl DAG {
             }
         }
 
+        // DEBUG: 初期状態を出力
+        eprintln!("DEBUG: Initial in_degree: {:?}", in_degree);
+        eprintln!("DEBUG: Initial queue: {:?}", queue);
+
         let results: Arc<Mutex<HashMap<String, ExecutionResult>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let (tx, mut rx) = mpsc::channel::<(String, Result<ExecutionResult, String>)>(100);
@@ -419,6 +504,7 @@ impl DAG {
                 let Some(task_id) = queue.pop() else {
                     break;
                 };
+                eprintln!("DEBUG: Processing task from queue: {}", task_id);
                 let task = self.nodes.get(&task_id).unwrap().clone();
                 let tx = tx.clone();
                 let results_clone = Arc::clone(&results);
@@ -464,6 +550,7 @@ impl DAG {
                     previous_results: &previous_results,
                     current_task: Some(&task),
                     loop_context,
+                    inputs: self.inputs.as_ref(),
                 };
 
                 // if/else条件の評価
@@ -556,12 +643,16 @@ impl DAG {
 
                 match result {
                     Ok(exec_result) => {
+                        eprintln!("DEBUG: Task {} completed successfully", task_id);
                         results.lock().unwrap().insert(task_id.clone(), exec_result);
 
                         if let Some(to_list) = self.edges.get(&task_id) {
+                            eprintln!("DEBUG: Task {} has successors: {:?}", task_id, to_list);
                             for to in to_list {
                                 *in_degree.get_mut(to).unwrap() -= 1;
+                                eprintln!("DEBUG: {} in_degree now = {}", to, in_degree[to]);
                                 if in_degree[to] == 0 {
+                                    eprintln!("DEBUG: Adding {} to queue", to);
                                     queue.push(to.clone());
                                 }
                             }
@@ -569,6 +660,13 @@ impl DAG {
                     }
                     Err(e) => {
                         eprintln!("Task {} failed: {}", task_id, e);
+                        // 失敗したタスクもresultsに追加（二重カウント防止）
+                        let failed_result = ExecutionResult {
+                            task_id: task_id.clone(),
+                            status: ExecutionStatus::Failed,
+                            output: serde_json::json!({"error": e}),
+                        };
+                        results.lock().unwrap().insert(task_id, failed_result);
                         failed_count += 1;
                     }
                 }
@@ -655,6 +753,7 @@ impl DAG {
                 previous_results: &results,
                 current_task: None,
                 loop_context: Some(&loop_context),
+                inputs: self.inputs.as_ref(),
             };
 
             // while条件チェック（falseなら終了）

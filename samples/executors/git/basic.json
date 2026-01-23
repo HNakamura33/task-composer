@@ -1,0 +1,60 @@
+{
+  "tasks": [
+    {
+      "task_id": "clone_repo",
+      "name": "Clone Repository",
+      "description": "Clone a repository from GitHub",
+      "executor": "git",
+      "args": {
+        "action": {
+          "type": "clone",
+          "url": "https://github.com/HNakamura33/task-composer-test.git",
+          "path": "/tmp/task-composer-test",
+          "branch": "main"
+        }
+      }
+    },
+    {
+      "task_id": "check_status",
+      "name": "Check Status",
+      "description": "Check repository status after clone",
+      "executor": "git",
+      "args": {
+        "action": {
+          "type": "status",
+          "path": "/tmp/task-composer-test",
+          "include_untracked": true
+        }
+      },
+      "dependencies": ["clone_repo"]
+    },
+    {
+      "task_id": "list_branches",
+      "name": "List Branches",
+      "description": "List all branches in the repository",
+      "executor": "git",
+      "args": {
+        "action": {
+          "type": "list_branches",
+          "path": "/tmp/task-composer-test",
+          "branch_type": "all"
+        }
+      },
+      "dependencies": ["check_status"]
+    },
+    {
+      "task_id": "show_log",
+      "name": "Show Commit Log",
+      "description": "Display recent commit history",
+      "executor": "git",
+      "args": {
+        "action": {
+          "type": "log",
+          "path": "/tmp/task-composer-test",
+          "max_count": 5
+        }
+      },
+      "dependencies": ["list_branches"]
+    }
+  ]
+}

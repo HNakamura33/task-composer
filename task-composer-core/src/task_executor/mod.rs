@@ -11,7 +11,11 @@
 //! registry.register(Box::new(LogExecutor::new()));
 //! ```
 
+pub mod bash_executor;
 pub mod dag_executor;
+pub mod data_executor;
+pub mod git_executor;
+pub mod github_executor;
 pub mod log_executor;
 pub mod mcp_executor;
 
@@ -19,9 +23,13 @@ use std::collections::HashMap;
 use crate::types::Task;
 use async_trait::async_trait;
 
+pub use bash_executor::BashExecutor;
 pub use dag_executor::DagExecutor;
+pub use data_executor::DataExecutor;
+pub use git_executor::GitExecutor;
+pub use github_executor::GitHubExecutor;
 pub use log_executor::LogExecutor;
-pub use mcp_executor::{McpExecutor, ConnectionConfig};
+pub use mcp_executor::{ConnectionConfig, McpExecutor};
 
 /// タスク実行のステータス
 ///

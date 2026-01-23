@@ -261,6 +261,39 @@ $.001-101.output.data        # ハイフン付きタスクID
 
 対応フィールド: `task_id`, `name`, `description`, `priority`, `status`, `prompt`, `executor`, `args`, `dependencies`, `role`
 
+### 入力参照（`$.inputs`）
+
+サブDAG内で親DAGから渡された値を参照：
+
+```json
+{
+  "task_id": "sub_workflow",
+  "executor": "dag",
+  "dependencies": ["parent_task"],
+  "args": {
+    "inputs": {
+      "parent_value": "$.parent_task.output.value",
+      "config": "$.parent_task.output.config"
+    },
+    "dag": {
+      "tasks": [{
+        "task_id": "child_task",
+        "executor": "data",
+        "args": {
+          "value": "$.inputs.parent_value",
+          "message": "Config: ${$.inputs.config.name}"
+        }
+      }]
+    }
+  }
+}
+```
+
+- `args.inputs` で親DAGの値をサブDAGに渡す
+- サブDAG内では `$.inputs.{field}` で参照
+- ネストしたフィールドにも対応（`$.inputs.config.name`）
+- 埋め込み参照も可能（`${$.inputs.field}`）
+
 ## 条件付き実行（if/else）
 
 タスクに`if`または`else`フィールドを追加することで、条件に基づいて実行をスキップできます。
@@ -355,16 +388,20 @@ Model Context Protocolを通じて外部MCPサーバーと連携します。
 
 ### DagExecutor
 
-サブグラフ（入れ子DAG）を実行します。最大3レベルまでネスト可能で、サブグラフ内の結果を親DAGから参照できます。
+サブグラフ（入れ子DAG）を実行します。最大3レベルまでネスト可能で、親子DAG間で値を受け渡しできます。
 
 ```json
 {
   "task_id": "data_pipeline",
   "executor": "dag",
+  "dependencies": ["config_task"],
   "args": {
+    "inputs": {
+      "config": "$.config_task.output.value"
+    },
     "dag": {
       "tasks": [
-        {"task_id": "extract", "executor": "log", "dependencies": []},
+        {"task_id": "extract", "executor": "data", "args": {"source": "$.inputs.config"}},
         {"task_id": "transform", "executor": "log", "dependencies": ["extract"]},
         {"task_id": "load", "executor": "log", "dependencies": ["transform"]}
       ],
@@ -374,16 +411,159 @@ Model Context Protocolを通じて外部MCPサーバーと連携します。
 }
 ```
 
-サブグラフの結果は親DAGから以下のように参照できます：
+- `args.inputs` で親DAGからサブDAGへ値を渡す
+- サブDAG内では `$.inputs.{field}` で参照
+- サブグラフの結果は親DAGから `$.{task_id}.output.{inner_task}.output.{field}` で参照
+
+### BashExecutor
+
+シェルコマンドを実行します。コマンドの出力がJSON形式の場合、自動的にパースして`parsed`フィールドに格納します。
 
 ```json
 {
-  "inputs": {
-    "load_result": "$.data_pipeline.output.load.output.task_id",
-    "load_status": "$.data_pipeline.output.load.status"
+  "executor": "bash",
+  "args": {
+    "command": "echo '{\"status\": \"success\"}'",
+    "cwd": "/path/to/workdir",
+    "timeout_secs": 60,
+    "shell": "sh"
   }
 }
 ```
+
+#### パラメータ
+
+| パラメータ | 説明 | デフォルト |
+|-----------|------|-----------|
+| `command` | 実行するシェルコマンド（必須） | - |
+| `cwd` | 作業ディレクトリ | カレントディレクトリ |
+| `timeout_secs` | タイムアウト（秒） | 300 |
+| `shell` | 使用するシェル | `sh` |
+
+#### 出力形式
+
+```json
+{
+  "exit_code": 0,
+  "stdout": "{\"status\": \"success\"}",
+  "stderr": "",
+  "success": true,
+  "parsed": { "status": "success" }
+}
+```
+
+- `parsed`: stdoutがJSON形式の場合、パース結果が格納される（パース失敗時は`null`）
+- 他のタスクから `$.task_id.output.parsed.field` で参照可能
+
+#### 使用例：パターンマッチング
+
+```json
+{
+  "task_id": "check",
+  "executor": "bash",
+  "args": {
+    "command": "echo '${$.prev.output}' | grep -q 'SUCCESS' && echo '{\"matched\": true}' || echo '{\"matched\": false}'"
+  }
+}
+```
+
+### GitExecutor
+
+ローカルGitリポジトリの操作を実行します。clone、commit、branch操作など基本的なGit操作をサポートします。
+
+```json
+{
+  "executor": "git",
+  "args": {
+    "action": {
+      "type": "clone",
+      "url": "https://github.com/user/repo.git",
+      "path": "/tmp/my-repo",
+      "branch": "main"
+    }
+  }
+}
+```
+
+#### サポートする操作
+
+| 操作 | 説明 | 必須パラメータ |
+|------|------|---------------|
+| `clone` | リポジトリをクローン | `url`, `path` |
+| `open` | 既存リポジトリを開く | `path` |
+| `init` | 新規リポジトリを初期化 | `path` |
+| `status` | ステータス確認 | `path` |
+| `diff` | 変更差分を表示 | `path` |
+| `log` | コミット履歴を表示 | `path` |
+| `commit` | コミット作成 | `path`, `message` |
+| `create_branch` | ブランチ作成 | `path`, `name` |
+| `checkout` | ブランチ切り替え | `path`, `branch` |
+| `list_branches` | ブランチ一覧 | `path` |
+| `delete_branch` | ブランチ削除 | `path`, `name` |
+| `fetch` | リモートから取得 | `path` |
+| `push` | リモートへプッシュ | `path` |
+
+#### 認証オプション
+
+```json
+{
+  "action": {
+    "type": "clone",
+    "url": "git@github.com:user/repo.git",
+    "path": "/tmp/repo",
+    "auth": {
+      "type": "ssh_agent"
+    }
+  }
+}
+```
+
+| 認証タイプ | 説明 |
+|-----------|------|
+| `ssh_agent` | SSH Agentを使用 |
+| `ssh_key` | SSHキーファイルを指定（`private_key_path`, `passphrase`） |
+| `user_password` | ユーザー名/パスワード認証（`username`, `password`） |
+
+### GitHubExecutor
+
+GitHub APIを通じてIssueやPull Requestを操作します。環境変数`GITHUB_TOKEN`で認証するか、argsで`token`を指定します。
+
+```json
+{
+  "executor": "github",
+  "args": {
+    "owner": "user",
+    "repo": "repository",
+    "action": {
+      "type": "create_issue",
+      "title": "Bug report",
+      "body": "Description of the issue"
+    }
+  }
+}
+```
+
+#### Issue操作
+
+| 操作 | 説明 | 必須パラメータ |
+|------|------|---------------|
+| `create_issue` | Issue作成 | `title` |
+| `get_issue` | Issue詳細取得 | `number` |
+| `list_issues` | Issue一覧 | - |
+| `update_issue` | Issue更新 | `number` |
+| `close_issue` | Issueクローズ | `number` |
+| `create_comment` | コメント追加 | `number`, `body` |
+| `delete_comment` | コメント削除 | `comment_id` |
+
+#### Pull Request操作
+
+| 操作 | 説明 | 必須パラメータ |
+|------|------|---------------|
+| `create_pr` | PR作成 | `title`, `head`, `base` |
+| `get_pr` | PR詳細取得 | `number` |
+| `list_prs` | PR一覧 | - |
+| `merge_pr` | PRマージ | `number` |
+| `request_review` | レビュー依頼 | `number` |
 
 ### ループ実行
 
@@ -426,6 +606,65 @@ Model Context Protocolを通じて外部MCPサーバーと連携します。
 ```
 
 初回イテレーション（`$.loop.first == true`）では、`$.loop.previous.*`は`null`を返します。
+
+### Ralph Loopパターン
+
+[Ralph Loop](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/ralph-loop)は、AIエージェントに反復的な自己改善ループを実行させるパターンです。task-composerの`loop_config`と`McpExecutor`を組み合わせることで実現できます。
+
+#### 特徴
+
+| Ralph Loopの特徴 | task-composerでの実現方法 |
+|-----------------|-------------------------|
+| プロンプト不変 | 同じtask定義がループで繰り返し実行される |
+| ファイル永続性 | Claude Codeがファイルに書き込み、次のイテレーションで参照 |
+| 自己参照 | `$.loop.previous.*` で前回の結果を参照 |
+| 完了条件 | `until_condition` で特定の出力を検出して終了 |
+| 最大反復数 | `max_iterations` で無限ループを防止 |
+
+#### 使用例
+
+```json
+{
+  "loop_config": {
+    "max_iterations": 10,
+    "until_condition": "$.improve.output.all_tests_passed == true"
+  },
+  "tasks": [
+    {
+      "task_id": "improve",
+      "executor": "mcp",
+      "args": {
+        "connection": { "type": "stdio", "command": "uv", "args": ["..."] },
+        "tool": "claude_code_query",
+        "arguments": {
+          "prompt": "Iteration: ${$.loop.iteration}\nPrevious result: ${$.loop.previous.improve.output}\n\n1. Run tests\n2. Fix failures\n3. Output { \"all_tests_passed\": true } when done",
+          "options": {
+            "max_turns": 50,
+            "allowed_tools": ["Read", "Write", "Edit", "Bash"]
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+#### 適切なユースケース
+
+**推奨：**
+- テスト駆動開発（テスト実行→失敗修正→再実行）
+- コード品質改善（lint→修正→再lint）
+- 段階的な機能実装（実装→テスト→改善）
+- 自動検証可能なタスク
+
+**非推奨：**
+- 人間の判断が必要なタスク
+- 明確な完了条件がないタスク
+- 本番環境でのデバッグ
+
+#### サンプル
+
+`samples/sample_ralph_loop.json` を参照してください。
 
 ### タイムアウト機能
 
@@ -555,24 +794,28 @@ task-composer/
 
 ## サンプルファイル
 
-サンプルファイルは `samples/` ディレクトリに配置されています。
+サンプルファイルは `samples/` ディレクトリに配置されています。詳細は [samples/README.md](./samples/README.md) を参照してください。
 
-| ファイル | 説明 |
-|----------|------|
-| `samples/sample_minimal.json` | 最小構成（task_idとexecutorのみ） |
-| `samples/sample_dag.json` | 基本的なDAG（LogExecutor使用） |
-| `samples/sample_mcp_dag.json` | MCP連携によるコード分析・README生成 |
-| `samples/sample_embedded_reference.json` | 埋め込み参照（`${...}`）のデモ |
-| `samples/sample_mcp_with_role.json` | Role情報をMCPに渡すデモ |
-| `samples/sample_mcp_with_hungup_timeout.json` | タイムアウト機能のデモ |
-| `samples/sample_if_else.json` | if/else条件付き実行のデモ |
-| `samples/sample_subgraph.json` | サブグラフ実行のデモ |
-| `samples/sample_nested_subgraph.json` | ネストしたサブグラフのデモ（2レベル） |
-| `samples/sample_loop.json` | ループ実行のデモ |
-| `samples/sample_analysis_test.json` | 静的解析のエラー検出テスト用 |
-| `samples/sample_error_test.json` | エラー検出テスト用 |
-| `samples/large_dag.json` | パフォーマンステスト用（大規模DAG） |
-| `samples/huge_dag.json` | パフォーマンステスト用（超大規模DAG） |
+```
+samples/
+├── basics/          # 入門・基本サンプル
+│   ├── minimal.json
+│   ├── simple_dag.json
+│   ├── embedded_reference.json
+│   └── auto_dependency.json
+├── executors/       # Executor別サンプル
+│   ├── bash.json
+│   ├── data.json
+│   ├── mcp/         # MCP連携
+│   ├── git/         # Git操作
+│   └── github/      # GitHub API
+├── features/        # 高度な機能
+│   ├── loop/        # ループ実行
+│   ├── condition/   # 条件分岐
+│   └── subgraph/    # サブグラフ
+├── workflows/       # 実践的ワークフロー
+└── _internal/       # 内部テスト用
+```
 
 ## ライセンス
 

@@ -1,0 +1,378 @@
+{
+  "tasks": [
+    {
+      "task_id": "issue_input",
+      "name": "Issue Number Input",
+      "description": "Input issue number to implement",
+      "executor": "data",
+      "args": {
+        "number": 5,
+        "repo_path": "/tmp/task-composer-test",
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "test_command": "npm test",
+        "test_framework": "jest"
+      }
+    },
+    {
+      "task_id": "get_issue",
+      "name": "Get Issue Details",
+      "description": "Fetch issue details from GitHub",
+      "executor": "github",
+      "dependencies": ["issue_input"],
+      "args": {
+        "owner": "$.issue_input.output.owner",
+        "repo": "$.issue_input.output.repo",
+        "action": {
+          "type": "get_issue",
+          "number": "$.issue_input.output.number"
+        }
+      }
+    },
+    {
+      "task_id": "create_branch",
+      "name": "Create Feature Branch",
+      "description": "Create a feature branch for implementation",
+      "executor": "git",
+      "dependencies": ["get_issue"],
+      "args": {
+        "action": {
+          "type": "create_branch",
+          "path": "$.issue_input.output.repo_path",
+          "name": "feature/issue-${$.issue_input.output.number}",
+          "checkout": true
+        }
+      }
+    },
+    {
+      "task_id": "design_interface",
+      "name": "Design Interface",
+      "description": "Design API specification and data models",
+      "executor": "mcp",
+      "dependencies": ["create_branch"],
+      "args": {
+        "connection": {
+          "type": "stdio",
+          "command": "uv",
+          "args": [
+            "run",
+            "--directory",
+            "mcp_servers/claude_code_mcp",
+            "main.py",
+            "serve"
+          ],
+          "env": {}
+        },
+        "tool": "claude_code_query",
+        "arguments": {
+          "prompt": "Design the interface specification based on this issue:\n\nTitle: ${$.get_issue.output.title}\nBody: ${$.get_issue.output.body}\n\nCreate:\n1. API specification (endpoints, request/response formats)\n2. Data models (database schema)\n3. UI component interfaces\n\nWrite the specification to docs/interface-spec.md",
+          "options": {
+            "cwd": "$.issue_input.output.repo_path",
+            "max_turns": 100,
+            "allowed_tools": ["Read", "Write", "Edit"],
+            "permission_mode": "acceptEdits"
+          }
+        }
+      }
+    },
+    {
+      "task_id": "generate_tests",
+      "name": "Generate Test Cases (TDD: Red)",
+      "description": "Generate test cases from interface specification before implementation",
+      "executor": "mcp",
+      "dependencies": ["design_interface"],
+      "args": {
+        "connection": {
+          "type": "stdio",
+          "command": "uv",
+          "args": [
+            "run",
+            "--directory",
+            "mcp_servers/claude_code_mcp",
+            "main.py",
+            "serve"
+          ],
+          "env": {}
+        },
+        "tool": "claude_code_query",
+        "arguments": {
+          "prompt": "Read the interface specification from docs/interface-spec.md.\n\nTest framework: ${$.issue_input.output.test_framework}\nTest command: ${$.issue_input.output.test_command}\n\nGenerate comprehensive test cases BEFORE implementation (TDD approach):\n\n1. **Database tests**:\n   - Schema validation\n   - CRUD operations\n   - Constraints and relationships\n\n2. **API tests**:\n   - Endpoint contracts\n   - Request/response validation\n   - Error handling\n   - Authentication/authorization\n\n3. **UI tests**:\n   - Component rendering\n   - User interactions\n   - Form validation\n\nUse the appropriate file naming convention and syntax for the specified test framework.\nThese tests should FAIL initially (Red phase of TDD).\nWrite tests that verify the interface contracts defined in the spec.",
+          "options": {
+            "cwd": "$.issue_input.output.repo_path",
+            "max_turns": 100,
+            "allowed_tools": ["Read", "Write", "Edit"],
+            "permission_mode": "acceptEdits"
+          }
+        }
+      }
+    },
+    {
+      "task_id": "setup_worktrees",
+      "name": "Setup Git Worktrees",
+      "description": "Create separate worktrees for parallel development to avoid conflicts",
+      "executor": "bash",
+      "dependencies": ["generate_tests"],
+      "args": {
+        "command": "cd ${$.issue_input.output.repo_path} && git add -A && git commit -m 'Add interface spec and tests' --allow-empty >/dev/null 2>&1; ISSUE=${$.issue_input.output.number} && git worktree remove /tmp/worktrees/db --force >/dev/null 2>&1; git worktree remove /tmp/worktrees/api --force >/dev/null 2>&1; git worktree remove /tmp/worktrees/ui --force >/dev/null 2>&1; git worktree prune >/dev/null 2>&1; git branch -D feature/issue-$ISSUE-db feature/issue-$ISSUE-api feature/issue-$ISSUE-ui >/dev/null 2>&1; mkdir -p /tmp/worktrees && git worktree add /tmp/worktrees/db -b feature/issue-$ISSUE-db >/dev/null 2>&1 && git worktree add /tmp/worktrees/api -b feature/issue-$ISSUE-api >/dev/null 2>&1 && git worktree add /tmp/worktrees/ui -b feature/issue-$ISSUE-ui >/dev/null 2>&1 && echo '{\"db_path\": \"/tmp/worktrees/db\", \"api_path\": \"/tmp/worktrees/api\", \"ui_path\": \"/tmp/worktrees/ui\"}'"
+      }
+    },
+    {
+      "task_id": "implementation_loop",
+      "name": "Implementation Loop (TDD: Green)",
+      "description": "Implement in separate worktrees until all tests pass (max 5 iterations)",
+      "executor": "dag",
+      "dependencies": ["setup_worktrees"],
+      "args": {
+        "inputs": {
+          "db_path": "$.setup_worktrees.output.parsed.db_path",
+          "api_path": "$.setup_worktrees.output.parsed.api_path",
+          "ui_path": "$.setup_worktrees.output.parsed.ui_path",
+          "repo_path": "$.issue_input.output.repo_path",
+          "issue_number": "$.issue_input.output.number",
+          "test_command": "$.issue_input.output.test_command",
+          "test_framework": "$.issue_input.output.test_framework"
+        },
+        "dag": {
+          "loop_config": {
+            "max_iterations": 5,
+            "until_condition": "$.check_result.output.parsed.passed == true"
+          },
+          "tasks": [
+            {
+              "task_id": "implement_db",
+              "name": "Implement/Fix Database",
+              "description": "Implement or fix database layer in dedicated worktree",
+              "executor": "mcp",
+              "args": {
+                "connection": {
+                  "type": "stdio",
+                  "command": "uv",
+                  "args": [
+                    "run",
+                    "--directory",
+                    "mcp_servers/claude_code_mcp",
+                    "main.py",
+                    "serve"
+                  ],
+                  "env": {}
+                },
+                "tool": "claude_code_query",
+                "arguments": {
+                  "prompt": "Iteration: ${$.loop.iteration}\nFirst iteration: ${$.loop.first}\n\nGoal: Make the database tests pass (TDD Green phase).\n\nWorking directory: worktrees/db (isolated worktree)\nTest command: ${$.inputs.test_command}\n\n1. Read docs/interface-spec.md for the specification\n2. Find and read the database test files to understand what tests need to pass\n3. If first iteration: Implement the database layer to pass the tests\n4. If not first iteration: Fix based on test failures:\n${$.loop.previous.run_tests.output.stdout}\n\nFocus on database layer only. Write minimal code to pass the tests.\nCommit your changes when done.",
+                  "options": {
+                    "cwd": "$.inputs.db_path",
+                    "max_turns": 100,
+                    "allowed_tools": ["Read", "Write", "Edit", "Bash"],
+                    "permission_mode": "acceptEdits"
+                  }
+                }
+              }
+            },
+            {
+              "task_id": "implement_api",
+              "name": "Implement/Fix API",
+              "description": "Implement or fix API layer in dedicated worktree",
+              "executor": "mcp",
+              "args": {
+                "connection": {
+                  "type": "stdio",
+                  "command": "uv",
+                  "args": [
+                    "run",
+                    "--directory",
+                    "mcp_servers/claude_code_mcp",
+                    "main.py",
+                    "serve"
+                  ],
+                  "env": {}
+                },
+                "tool": "claude_code_query",
+                "arguments": {
+                  "prompt": "Iteration: ${$.loop.iteration}\nFirst iteration: ${$.loop.first}\n\nGoal: Make the API tests pass (TDD Green phase).\n\nWorking directory: worktrees/api (isolated worktree)\nTest command: ${$.inputs.test_command}\n\n1. Read docs/interface-spec.md for the specification\n2. Find and read the API test files to understand what tests need to pass\n3. If first iteration: Implement the API layer to pass the tests\n4. If not first iteration: Fix based on test failures:\n${$.loop.previous.run_tests.output.stdout}\n\nFocus on API layer only. Write minimal code to pass the tests.\nCommit your changes when done.",
+                  "options": {
+                    "cwd": "$.inputs.api_path",
+                    "max_turns": 100,
+                    "allowed_tools": ["Read", "Write", "Edit", "Bash"],
+                    "permission_mode": "acceptEdits"
+                  }
+                }
+              }
+            },
+            {
+              "task_id": "implement_ui",
+              "name": "Implement/Fix UI",
+              "description": "Implement or fix UI layer in dedicated worktree",
+              "executor": "mcp",
+              "args": {
+                "connection": {
+                  "type": "stdio",
+                  "command": "uv",
+                  "args": [
+                    "run",
+                    "--directory",
+                    "mcp_servers/claude_code_mcp",
+                    "main.py",
+                    "serve"
+                  ],
+                  "env": {}
+                },
+                "tool": "claude_code_query",
+                "arguments": {
+                  "prompt": "Iteration: ${$.loop.iteration}\nFirst iteration: ${$.loop.first}\n\nGoal: Make the UI tests pass (TDD Green phase).\n\nWorking directory: worktrees/ui (isolated worktree)\nTest command: ${$.inputs.test_command}\n\n1. Read docs/interface-spec.md for the specification\n2. Find and read the UI test files to understand what tests need to pass\n3. If first iteration: Implement the UI layer to pass the tests\n4. If not first iteration: Fix based on test failures:\n${$.loop.previous.run_tests.output.stdout}\n\nFocus on UI layer only. Write minimal code to pass the tests.\nCommit your changes when done.",
+                  "options": {
+                    "cwd": "$.inputs.ui_path",
+                    "max_turns": 100,
+                    "allowed_tools": ["Read", "Write", "Edit", "Bash"],
+                    "permission_mode": "acceptEdits"
+                  }
+                }
+              }
+            },
+            {
+              "task_id": "merge_worktrees",
+              "name": "Merge Worktrees",
+              "description": "Merge all worktree branches, detecting conflicts",
+              "executor": "bash",
+              "dependencies": ["implement_db", "implement_api", "implement_ui"],
+              "args": {
+                "command": "cd ${$.inputs.repo_path} && ISSUE=${$.inputs.issue_number} && CONFLICT=false && (git merge feature/issue-$ISSUE-db --no-edit -m 'Merge db' >/dev/null 2>&1 || CONFLICT=true) && (git merge feature/issue-$ISSUE-api --no-edit -m 'Merge api' >/dev/null 2>&1 || CONFLICT=true) && (git merge feature/issue-$ISSUE-ui --no-edit -m 'Merge ui' >/dev/null 2>&1 || CONFLICT=true) && if [ \"$CONFLICT\" = \"true\" ]; then echo '{\"has_conflict\": true}'; else echo '{\"has_conflict\": false}'; fi"
+              }
+            },
+            {
+              "task_id": "resolve_conflicts",
+              "name": "Check and Resolve Merge Conflicts",
+              "description": "Check for merge conflicts and resolve if any exist",
+              "executor": "mcp",
+              "dependencies": ["merge_worktrees"],
+              "args": {
+                "connection": {
+                  "type": "stdio",
+                  "command": "uv",
+                  "args": [
+                    "run",
+                    "--directory",
+                    "mcp_servers/claude_code_mcp",
+                    "main.py",
+                    "serve"
+                  ],
+                  "env": {}
+                },
+                "tool": "claude_code_query",
+                "arguments": {
+                  "prompt": "Check if there are any merge conflicts.\n\n1. Run 'git status' to check for conflicts\n2. If NO conflicts: respond 'No conflicts to resolve' and you're done\n3. If conflicts exist:\n   - Read each conflicting file\n   - Read docs/interface-spec.md for the specification\n   - Resolve conflicts intelligently\n   - Stage resolved files with 'git add'\n   - Complete the merge with 'git commit'",
+                  "options": {
+                    "cwd": "$.inputs.repo_path",
+                    "max_turns": 100,
+                    "allowed_tools": ["Read", "Write", "Edit", "Bash"],
+                    "permission_mode": "acceptEdits"
+                  }
+                }
+              }
+            },
+            {
+              "task_id": "run_tests",
+              "name": "Run Tests",
+              "description": "Run test suite on merged code",
+              "executor": "bash",
+              "dependencies": ["merge_worktrees", "resolve_conflicts"],
+              "args": {
+                "command": "cd ${$.inputs.repo_path} && ${$.inputs.test_command} 2>&1 || true"
+              }
+            },
+            {
+              "task_id": "analyze_results",
+              "name": "Analyze Test Results",
+              "description": "Use AI to intelligently analyze test output and determine pass/fail",
+              "executor": "mcp",
+              "dependencies": ["run_tests"],
+              "args": {
+                "connection": {
+                  "type": "stdio",
+                  "command": "uv",
+                  "args": [
+                    "run",
+                    "--directory",
+                    "mcp_servers/claude_code_mcp",
+                    "main.py",
+                    "serve"
+                  ],
+                  "env": {}
+                },
+                "tool": "claude_code_query",
+                "arguments": {
+                  "prompt": "Analyze the following test output and determine if ALL tests passed.\n\nTest framework: ${$.inputs.test_framework}\nTest output:\n```\n${$.run_tests.output.stdout}\n```\n\nLook for indicators like:\n- 'passed', 'ok', 'success', 'PASS' for success\n- 'failed', 'error', 'FAIL', 'failure' for failures\n- Exit codes, test counts, error messages\n\nIMPORTANT: Your response MUST end with exactly one of these markers:\n- ALL_TESTS_PASSED (if all tests passed)\n- TESTS_FAILED (if any test failed)",
+                  "options": {
+                    "cwd": "$.inputs.repo_path",
+                    "max_turns": 100,
+                    "allowed_tools": [],
+                    "permission_mode": "default"
+                  }
+                }
+              }
+            },
+            {
+              "task_id": "check_result",
+              "name": "Check Test Result",
+              "description": "Parse analyze_results output to determine pass/fail",
+              "executor": "bash",
+              "dependencies": ["analyze_results"],
+              "args": {
+                "command": "grep -q 'ALL_TESTS_PASSED' <<'HEREDOC' && echo '{\"passed\": true}' || echo '{\"passed\": false}'\n${$.analyze_results.output.content[0].text}\nHEREDOC"
+              }
+            }
+          ],
+          "config": {
+            "max_concurrent_tasks": 3
+          }
+        }
+      }
+    },
+    {
+      "task_id": "cleanup_worktrees",
+      "name": "Cleanup Git Worktrees",
+      "description": "Remove worktrees after successful implementation",
+      "executor": "bash",
+      "dependencies": ["implementation_loop"],
+      "args": {
+        "command": "cd ${$.issue_input.output.repo_path} && ISSUE=${$.issue_input.output.number} && git worktree remove /tmp/worktrees/db --force && git worktree remove /tmp/worktrees/api --force && git worktree remove /tmp/worktrees/ui --force && git branch -D feature/issue-$ISSUE-db feature/issue-$ISSUE-api feature/issue-$ISSUE-ui && rm -rf /tmp/worktrees && echo '{\"cleaned\": true}'"
+      }
+    },
+    {
+      "task_id": "push_branch",
+      "name": "Push Feature Branch",
+      "description": "Push feature branch to remote before creating PR",
+      "executor": "git",
+      "dependencies": ["cleanup_worktrees"],
+      "args": {
+        "action": {
+          "type": "push",
+          "path": "$.issue_input.output.repo_path",
+          "remote": "origin",
+          "branch": "feature/issue-${$.issue_input.output.number}"
+        }
+      }
+    },
+    {
+      "task_id": "create_pr",
+      "name": "Create Pull Request",
+      "description": "Create a pull request for the feature",
+      "executor": "github",
+      "dependencies": ["push_branch"],
+      "args": {
+        "owner": "$.issue_input.output.owner",
+        "repo": "$.issue_input.output.repo",
+        "action": {
+          "type": "create_pr",
+          "title": "${$.get_issue.output.title}",
+          "head": "feature/issue-${$.issue_input.output.number}",
+          "base": "main",
+          "body": "## Summary\nImplementation for Issue #${$.issue_input.output.number}\n\n## Related Issue\nCloses #${$.issue_input.output.number}\n\n## TDD Approach\n- Interface Design: docs/interface-spec.md\n- Test Framework: ${$.issue_input.output.test_framework}\n- Test Command: ${$.issue_input.output.test_command}\n- Implementation: Parallel development using git worktrees\n\n## Test Results\n```\n${$.implementation_loop.output.run_tests.output.stdout}\n```"
+        }
+      }
+    }
+  ],
+  "config": {
+    "max_concurrent_tasks": 3,
+    "default_task_timeout_secs": 3600
+  }
+}

@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 use task_composer_core::dag::DAG;
 use task_composer_core::analysis::StaticAnalyzer;
 use std::sync::Arc;
-use task_composer_core::task_executor::{LogExecutor, McpExecutor, DagExecutor, ExecutionStatus};
+use task_composer_core::task_executor::{BashExecutor, LogExecutor, McpExecutor, DagExecutor, DataExecutor, GitExecutor, GitHubExecutor, ExecutionStatus};
 
 #[derive(Parser)]
 #[command(name = "task-composer")]
@@ -57,7 +57,7 @@ async fn main() {
         }
         None => {
             // 後方互換性: コマンドなしの場合は従来通り実行のみ
-            let file = cli.file.unwrap_or_else(|| "samples/sample_dag.json".to_string());
+            let file = cli.file.unwrap_or_else(|| "samples/basics/simple_dag.json".to_string());
             run_execute_only(&file).await;
         }
     }
@@ -188,8 +188,17 @@ fn load_dag(file: &str) -> Result<DAG, String> {
 /// * `depth` - 残りのネスト深度（0になるとDagExecutorを含まない）
 fn create_registry_with_depth(depth: usize) -> Arc<task_composer_core::task_executor::ExecutorRegistry> {
     let mut registry = task_composer_core::task_executor::ExecutorRegistry::new();
+    registry.register(Box::new(BashExecutor::new()));
     registry.register(Box::new(LogExecutor::new()));
+    registry.register(Box::new(DataExecutor::new()));
     registry.register(Box::new(McpExecutor::new()));
+    registry.register(Box::new(GitExecutor::new()));
+    // GITHUB_TOKEN環境変数からトークンを取得
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        registry.register(Box::new(GitHubExecutor::with_token(token)));
+    } else {
+        registry.register(Box::new(GitHubExecutor::new()));
+    }
     if depth > 0 {
         let sub_registry = create_registry_with_depth(depth - 1);
         registry.register(Box::new(DagExecutor::new(sub_registry)));

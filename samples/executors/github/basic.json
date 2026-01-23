@@ -1,0 +1,65 @@
+{
+  "tasks": [
+    {
+      "task_id": "create_issue",
+      "name": "Create Issue",
+      "description": "Create a new issue on GitHub",
+      "executor": "github",
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "create_issue",
+          "title": "Test Issue from task-composer",
+          "body": "## Description\nThis is a test issue created by task-composer.\n\n## Purpose\nTesting the GitHubExecutor functionality."
+        }
+      }
+    },
+    {
+      "task_id": "list_open_issues",
+      "name": "List Open Issues",
+      "description": "List all open issues in the repository",
+      "executor": "github",
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "list_issues",
+          "state": "open",
+          "per_page": 10
+        }
+      }
+    },
+    {
+      "task_id": "get_created_issue",
+      "name": "Get Created Issue",
+      "description": "Get details of the created issue",
+      "executor": "github",
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "get_issue",
+          "number": "$.create_issue.output.number"
+        }
+      },
+      "dependencies": ["create_issue"]
+    },
+    {
+      "task_id": "close_issue",
+      "name": "Close Issue",
+      "description": "Close the created issue",
+      "executor": "github",
+      "args": {
+        "owner": "HNakamura33",
+        "repo": "task-composer-test",
+        "action": {
+          "type": "close_issue",
+          "number": "$.create_issue.output.number",
+          "reason": "completed"
+        }
+      },
+      "dependencies": ["create_issue", "get_created_issue"]
+    }
+  ]
+}
