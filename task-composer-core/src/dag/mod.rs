@@ -551,6 +551,8 @@ impl DAG {
                     current_task: Some(&task),
                     loop_context,
                     inputs: self.inputs.as_ref(),
+                    map_context: None,
+                    reduce_context: None,
                 };
 
                 // if/else条件の評価
@@ -585,6 +587,7 @@ impl DAG {
                 let ctx = ExecutionContext {
                     args: resolved_args,
                     env_vars: HashMap::new(),
+                    previous_results: Some(previous_results.clone()),
                 };
 
                 let registry = Arc::clone(&self.registry);
@@ -754,6 +757,8 @@ impl DAG {
                 current_task: None,
                 loop_context: Some(&loop_context),
                 inputs: self.inputs.as_ref(),
+                map_context: None,
+                reduce_context: None,
             };
 
             // while条件チェック（falseなら終了）

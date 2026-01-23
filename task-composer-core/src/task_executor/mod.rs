@@ -14,10 +14,13 @@
 pub mod bash_executor;
 pub mod dag_executor;
 pub mod data_executor;
+pub mod filter_executor;
 pub mod git_executor;
 pub mod github_executor;
 pub mod log_executor;
+pub mod map_executor;
 pub mod mcp_executor;
+pub mod reduce_executor;
 
 use std::collections::HashMap;
 use crate::types::Task;
@@ -26,10 +29,13 @@ use async_trait::async_trait;
 pub use bash_executor::BashExecutor;
 pub use dag_executor::DagExecutor;
 pub use data_executor::DataExecutor;
+pub use filter_executor::FilterExecutor;
 pub use git_executor::GitExecutor;
 pub use github_executor::GitHubExecutor;
 pub use log_executor::LogExecutor;
+pub use map_executor::MapExecutor;
 pub use mcp_executor::{ConnectionConfig, McpExecutor};
+pub use reduce_executor::ReduceExecutor;
 
 /// タスク実行のステータス
 ///
@@ -74,6 +80,8 @@ pub struct ExecutionContext {
     pub args: serde_json::Value,
     /// 環境変数
     pub env_vars: HashMap<String, String>,
+    /// 依存タスクの実行結果（MapExecutor等で使用）
+    pub previous_results: Option<HashMap<String, ExecutionResult>>,
 }
 
 /// タスク実行時のエラー

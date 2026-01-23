@@ -4,7 +4,11 @@ use clap::{Parser, Subcommand};
 use task_composer_core::dag::DAG;
 use task_composer_core::analysis::StaticAnalyzer;
 use std::sync::Arc;
-use task_composer_core::task_executor::{BashExecutor, LogExecutor, McpExecutor, DagExecutor, DataExecutor, GitExecutor, GitHubExecutor, ExecutionStatus};
+use task_composer_core::task_executor::{
+    BashExecutor, LogExecutor, McpExecutor, DagExecutor, DataExecutor,
+    GitExecutor, GitHubExecutor, MapExecutor, FilterExecutor, ReduceExecutor,
+    ExecutionStatus,
+};
 
 #[derive(Parser)]
 #[command(name = "task-composer")]
@@ -193,6 +197,7 @@ fn create_registry_with_depth(depth: usize) -> Arc<task_composer_core::task_exec
     registry.register(Box::new(DataExecutor::new()));
     registry.register(Box::new(McpExecutor::new()));
     registry.register(Box::new(GitExecutor::new()));
+    registry.register(Box::new(FilterExecutor::new()));
     // GITHUB_TOKEN環境変数からトークンを取得
     if let Ok(token) = std::env::var("GITHUB_TOKEN") {
         registry.register(Box::new(GitHubExecutor::with_token(token)));
@@ -201,7 +206,9 @@ fn create_registry_with_depth(depth: usize) -> Arc<task_composer_core::task_exec
     }
     if depth > 0 {
         let sub_registry = create_registry_with_depth(depth - 1);
-        registry.register(Box::new(DagExecutor::new(sub_registry)));
+        registry.register(Box::new(DagExecutor::new(Arc::clone(&sub_registry))));
+        registry.register(Box::new(MapExecutor::new(Arc::clone(&sub_registry))));
+        registry.register(Box::new(ReduceExecutor::new(sub_registry)));
     }
     Arc::new(registry)
 }
