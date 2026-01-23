@@ -1,0 +1,73 @@
+{
+  "tasks": [
+    {
+      "task_id": "parent_data",
+      "name": "Parent Data",
+      "description": "Create data that will be passed to sub-DAG",
+      "executor": "data",
+      "args": {
+        "value": {
+          "user_id": "u123",
+          "user_name": "Alice",
+          "items": ["apple", "banana", "cherry"]
+        }
+      }
+    },
+    {
+      "task_id": "sub_workflow",
+      "name": "Sub Workflow",
+      "description": "Process data using $.inputs reference",
+      "executor": "dag",
+      "dependencies": ["parent_data"],
+      "args": {
+        "inputs": {
+          "user": "$.parent_data.output.value",
+          "prefix": "Hello"
+        },
+        "dag": {
+          "tasks": [
+            {
+              "task_id": "greet",
+              "name": "Greet User",
+              "description": "Create greeting using inputs",
+              "executor": "data",
+              "args": {
+                "value": "${$.inputs.prefix} ${$.inputs.user.user_name}!"
+              }
+            },
+            {
+              "task_id": "process_items",
+              "name": "Process Items",
+              "description": "Access nested inputs",
+              "executor": "data",
+              "dependencies": ["greet"],
+              "args": {
+                "value": {
+                  "user_id": "$.inputs.user.user_id",
+                  "greeting": "$.greet.output.value",
+                  "first_item": "$.inputs.user.items[0]"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "task_id": "final",
+      "name": "Final",
+      "description": "Access sub-DAG results",
+      "executor": "data",
+      "dependencies": ["sub_workflow"],
+      "args": {
+        "value": {
+          "greeting": "$.sub_workflow.output.greet.output.value",
+          "processed": "$.sub_workflow.output.process_items.output.value"
+        }
+      }
+    }
+  ],
+  "config": {
+    "max_concurrent_tasks": 2
+  }
+}

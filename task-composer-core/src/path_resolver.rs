@@ -43,12 +43,17 @@ pub enum PathResolveError {
     LoopReferenceWithoutContext,
     /// $.loop参照でフィールドが見つからない
     LoopFieldNotFound(String),
+    /// $.inputs参照でinputsが必要
+    InputsReferenceWithoutContext,
+    /// $.inputs参照でフィールドが見つからない
+    InputsFieldNotFound(String),
 }
 
 /// パス解決のコンテキスト
 ///
 /// `$.self` 参照を解決するために現在のタスク情報を保持する
 /// `$.loop` 参照を解決するためにループコンテキスト情報を保持する
+/// `$.inputs` 参照を解決するために外部入力を保持する
 pub struct ResolveContext<'a> {
     /// 依存タスクの実行結果
     pub previous_results: &'a HashMap<String, ExecutionResult>,
@@ -56,6 +61,8 @@ pub struct ResolveContext<'a> {
     pub current_task: Option<&'a Task>,
     /// ループコンテキスト（$.loop参照用）
     pub loop_context: Option<&'a LoopContext>,
+    /// 外部入力（$.inputs参照用、サブDAGで親から渡された値）
+    pub inputs: Option<&'a serde_json::Value>,
 }
 
 impl std::fmt::Display for PathResolveError {
@@ -78,6 +85,12 @@ impl std::fmt::Display for PathResolveError {
             }
             PathResolveError::LoopFieldNotFound(field) => {
                 write!(f, "Loop field not found: {}", field)
+            }
+            PathResolveError::InputsReferenceWithoutContext => {
+                write!(f, "$.inputs reference requires inputs context")
+            }
+            PathResolveError::InputsFieldNotFound(field) => {
+                write!(f, "Inputs field not found: {}", field)
             }
         }
     }
@@ -147,17 +160,21 @@ fn extract_task_ids_from_string(s: &str, tasks: &mut HashSet<String>) {
     // パターン: $. で始まり .output. を含む参照
     // $.self と $.loop は除外
     // task_idには英数字、ハイフン、アンダースコア、ドットが許可される
-    let path_regex = Regex::new(r"\$\.([a-zA-Z0-9_\-\.]+)\.output\.").unwrap();
+    // 非貪欲マッチ (+?) で最初の .output. までをキャプチャ
+    // これにより $.subdag.output.inner.output.field のような参照で
+    // subdag が正しくtask_idとして抽出される
+    let path_regex = Regex::new(r"\$\.([a-zA-Z0-9_\-\.]+?)\.output\.").unwrap();
 
     // 埋め込み参照: ${$.task_id.output.*}
-    let embedded_regex = Regex::new(r"\$\{\$\.([a-zA-Z0-9_\-\.]+)\.output\.[^}]*\}").unwrap();
+    // 同様に非貪欲マッチを使用
+    let embedded_regex = Regex::new(r"\$\{\$\.([a-zA-Z0-9_\-\.]+?)\.output\.[^}]*\}").unwrap();
 
     // 直接参照を抽出
     for cap in path_regex.captures_iter(s) {
         if let Some(task_id_match) = cap.get(1) {
             let task_id = task_id_match.as_str();
-            // $.self と $.loop は除外
-            if task_id != "self" && task_id != "loop" && !task_id.starts_with("loop.") {
+            // $.self, $.loop, $.inputs は除外
+            if task_id != "self" && task_id != "loop" && task_id != "inputs" && !task_id.starts_with("loop.") {
                 tasks.insert(task_id.to_string());
             }
         }
@@ -167,8 +184,8 @@ fn extract_task_ids_from_string(s: &str, tasks: &mut HashSet<String>) {
     for cap in embedded_regex.captures_iter(s) {
         if let Some(task_id_match) = cap.get(1) {
             let task_id = task_id_match.as_str();
-            // $.self と $.loop は除外
-            if task_id != "self" && task_id != "loop" && !task_id.starts_with("loop.") {
+            // $.self, $.loop, $.inputs は除外
+            if task_id != "self" && task_id != "loop" && task_id != "inputs" && !task_id.starts_with("loop.") {
                 tasks.insert(task_id.to_string());
             }
         }
@@ -314,7 +331,14 @@ fn resolve_path(
         return resolve_loop_reference(field_path, ctx);
     }
 
-    // 4. 依存タスク参照: ".output." を探してtask_idを抽出
+    // 4. $.inputs 参照の場合
+    if path.starts_with("inputs.") || path == "inputs" {
+        let field_path = path.strip_prefix("inputs").unwrap_or("");
+        let field_path = field_path.strip_prefix('.').unwrap_or(field_path);
+        return resolve_inputs_reference(field_path, ctx);
+    }
+
+    // 5. 依存タスク参照: ".output." を探してtask_idを抽出
     let output_marker = ".output.";
     let output_pos = path.find(output_marker).ok_or_else(|| {
         PathResolveError::InvalidPathSyntax(format!("Path must contain '.output.' : $.{}", path))
@@ -404,6 +428,30 @@ fn resolve_loop_previous_reference(
             remaining
         )))
     }
+}
+
+/// $.inputs 参照を解決する
+///
+/// 親DAGから渡された入力値を取得する
+/// - `$.inputs` - 入力値全体
+/// - `$.inputs.{field}` - 特定のフィールド
+fn resolve_inputs_reference(
+    field_path: &str,
+    ctx: &ResolveContext,
+) -> Result<serde_json::Value, PathResolveError> {
+    let inputs = ctx.inputs.ok_or(PathResolveError::InputsReferenceWithoutContext)?;
+
+    // フィールドパスが空の場合、入力値全体を返す
+    if field_path.is_empty() {
+        return Ok(inputs.clone());
+    }
+
+    // フィールドパスに従って値を取得
+    get_value_by_field_path(inputs, field_path)
+        .map_err(|e| match e {
+            PathResolveError::FieldNotFound(f) => PathResolveError::InputsFieldNotFound(f),
+            other => other,
+        })
 }
 
 /// $.self 参照を解決する
@@ -934,6 +982,7 @@ mod tests {
             previous_results: results,
             current_task: None,
             loop_context: None,
+            inputs: None,
         }
     }
 
@@ -946,6 +995,7 @@ mod tests {
             previous_results: results,
             current_task: Some(task),
             loop_context: None,
+            inputs: None,
         }
     }
 
@@ -958,6 +1008,20 @@ mod tests {
             previous_results: results,
             current_task: None,
             loop_context: Some(loop_ctx),
+            inputs: None,
+        }
+    }
+
+    /// inputs付きのテスト用ヘルパー
+    fn ctx_with_inputs<'a>(
+        results: &'a HashMap<String, ExecutionResult>,
+        inputs: &'a serde_json::Value,
+    ) -> ResolveContext<'a> {
+        ResolveContext {
+            previous_results: results,
+            current_task: None,
+            loop_context: None,
+            inputs: Some(inputs),
         }
     }
 
@@ -1724,6 +1788,7 @@ mod tests {
             previous_results: &results,
             current_task: None,
             loop_context: Some(&loop_ctx),
+            inputs: None,
         };
 
         // iteration check
@@ -1866,6 +1931,43 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_referenced_tasks_subdag_output() {
+        // サブDAGの出力参照: $.subdag.output.inner_task.output.field
+        // 非貪欲マッチにより、最初の.output.の前のtask_idのみ抽出される
+        let value = json!("${$.implementation_loop.output.run_tests.output.stdout}");
+        let refs = extract_referenced_tasks(&value);
+
+        // implementation_loop のみが抽出される（run_tests ではない）
+        assert_eq!(refs.len(), 1);
+        assert!(refs.contains("implementation_loop"));
+        assert!(!refs.contains("implementation_loop.output.run_tests"));
+    }
+
+    #[test]
+    fn test_extract_referenced_tasks_subdag_output_direct() {
+        // 直接参照パターンでも同様
+        let value = json!("$.subdag_task.output.inner.output.result");
+        let refs = extract_referenced_tasks(&value);
+
+        assert_eq!(refs.len(), 1);
+        assert!(refs.contains("subdag_task"));
+    }
+
+    #[test]
+    fn test_extract_referenced_tasks_multiple_subdag_outputs() {
+        // 複数のサブDAG出力参照
+        let value = json!({
+            "test_result": "${$.impl_loop.output.run_tests.output.stdout}",
+            "build_result": "$.build_loop.output.compile.output.status"
+        });
+        let refs = extract_referenced_tasks(&value);
+
+        assert_eq!(refs.len(), 2);
+        assert!(refs.contains("impl_loop"));
+        assert!(refs.contains("build_loop"));
+    }
+
+    #[test]
     fn test_extract_referenced_tasks_mixed_pattern() {
         let value = json!({
             "prompt": "Process ${$.prepare.output.data} and compare with $.validate.output.result",
@@ -1879,5 +1981,118 @@ mod tests {
         assert!(refs.contains("prepare"));
         assert!(refs.contains("validate"));
         assert!(refs.contains("source_task"));
+    }
+
+    // ============================================
+    // $.inputs 参照のテスト
+    // ============================================
+
+    #[test]
+    fn test_resolve_inputs_reference_simple() {
+        let results = HashMap::new();
+        let inputs = json!({
+            "parent_value": 42,
+            "parent_name": "test"
+        });
+        let ctx = ctx_with_inputs(&results, &inputs);
+
+        // $.inputs.parent_value
+        let input = json!("$.inputs.parent_value");
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, json!(42));
+
+        // $.inputs.parent_name
+        let input = json!("$.inputs.parent_name");
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, json!("test"));
+    }
+
+    #[test]
+    fn test_resolve_inputs_reference_nested() {
+        let results = HashMap::new();
+        let inputs = json!({
+            "config": {
+                "value": 100,
+                "nested": {
+                    "deep": "found"
+                }
+            }
+        });
+        let ctx = ctx_with_inputs(&results, &inputs);
+
+        // $.inputs.config.value
+        let input = json!("$.inputs.config.value");
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, json!(100));
+
+        // $.inputs.config.nested.deep
+        let input = json!("$.inputs.config.nested.deep");
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, json!("found"));
+    }
+
+    #[test]
+    fn test_resolve_inputs_reference_entire() {
+        let results = HashMap::new();
+        let inputs = json!({
+            "key1": "value1",
+            "key2": "value2"
+        });
+        let ctx = ctx_with_inputs(&results, &inputs);
+
+        // $.inputs (全体)
+        let input = json!("$.inputs");
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, inputs);
+    }
+
+    #[test]
+    fn test_resolve_inputs_reference_embedded() {
+        let results = HashMap::new();
+        let inputs = json!({
+            "name": "World"
+        });
+        let ctx = ctx_with_inputs(&results, &inputs);
+
+        // 埋め込み参照
+        let input = json!("Hello ${$.inputs.name}!");
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, json!("Hello World!"));
+    }
+
+    #[test]
+    fn test_resolve_inputs_reference_without_context() {
+        let results = HashMap::new();
+        let ctx = ctx_without_task(&results); // inputs: None
+
+        let input = json!("$.inputs.value");
+        let result = resolve_inputs(&input, &ctx);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_inputs_reference_field_not_found() {
+        let results = HashMap::new();
+        let inputs = json!({"existing": "value"});
+        let ctx = ctx_with_inputs(&results, &inputs);
+
+        let input = json!("$.inputs.nonexistent");
+        let result = resolve_inputs(&input, &ctx);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_referenced_tasks_excludes_inputs() {
+        // $.inputs への参照は依存関係として抽出されない
+        let value = json!({
+            "prompt": "Using ${$.inputs.parent_value} from parent",
+            "other": "$.task_a.output.result"
+        });
+        let refs = extract_referenced_tasks(&value);
+
+        // inputs は除外、task_a のみ含まれる
+        assert_eq!(refs.len(), 1);
+        assert!(refs.contains("task_a"));
+        assert!(!refs.contains("inputs"));
     }
 }

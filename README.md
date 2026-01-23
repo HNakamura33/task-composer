@@ -261,6 +261,39 @@ $.001-101.output.data        # ハイフン付きタスクID
 
 対応フィールド: `task_id`, `name`, `description`, `priority`, `status`, `prompt`, `executor`, `args`, `dependencies`, `role`
 
+### 入力参照（`$.inputs`）
+
+サブDAG内で親DAGから渡された値を参照：
+
+```json
+{
+  "task_id": "sub_workflow",
+  "executor": "dag",
+  "dependencies": ["parent_task"],
+  "args": {
+    "inputs": {
+      "parent_value": "$.parent_task.output.value",
+      "config": "$.parent_task.output.config"
+    },
+    "dag": {
+      "tasks": [{
+        "task_id": "child_task",
+        "executor": "data",
+        "args": {
+          "value": "$.inputs.parent_value",
+          "message": "Config: ${$.inputs.config.name}"
+        }
+      }]
+    }
+  }
+}
+```
+
+- `args.inputs` で親DAGの値をサブDAGに渡す
+- サブDAG内では `$.inputs.{field}` で参照
+- ネストしたフィールドにも対応（`$.inputs.config.name`）
+- 埋め込み参照も可能（`${$.inputs.field}`）
+
 ## 条件付き実行（if/else）
 
 タスクに`if`または`else`フィールドを追加することで、条件に基づいて実行をスキップできます。
@@ -355,16 +388,20 @@ Model Context Protocolを通じて外部MCPサーバーと連携します。
 
 ### DagExecutor
 
-サブグラフ（入れ子DAG）を実行します。最大3レベルまでネスト可能で、サブグラフ内の結果を親DAGから参照できます。
+サブグラフ（入れ子DAG）を実行します。最大3レベルまでネスト可能で、親子DAG間で値を受け渡しできます。
 
 ```json
 {
   "task_id": "data_pipeline",
   "executor": "dag",
+  "dependencies": ["config_task"],
   "args": {
+    "inputs": {
+      "config": "$.config_task.output.value"
+    },
     "dag": {
       "tasks": [
-        {"task_id": "extract", "executor": "log", "dependencies": []},
+        {"task_id": "extract", "executor": "data", "args": {"source": "$.inputs.config"}},
         {"task_id": "transform", "executor": "log", "dependencies": ["extract"]},
         {"task_id": "load", "executor": "log", "dependencies": ["transform"]}
       ],
@@ -374,16 +411,9 @@ Model Context Protocolを通じて外部MCPサーバーと連携します。
 }
 ```
 
-サブグラフの結果は親DAGから以下のように参照できます：
-
-```json
-{
-  "inputs": {
-    "load_result": "$.data_pipeline.output.load.output.task_id",
-    "load_status": "$.data_pipeline.output.load.status"
-  }
-}
-```
+- `args.inputs` で親DAGからサブDAGへ値を渡す
+- サブDAG内では `$.inputs.{field}` で参照
+- サブグラフの結果は親DAGから `$.{task_id}.output.{inner_task}.output.{field}` で参照
 
 ### BashExecutor
 
@@ -764,30 +794,28 @@ task-composer/
 
 ## サンプルファイル
 
-サンプルファイルは `samples/` ディレクトリに配置されています。
+サンプルファイルは `samples/` ディレクトリに配置されています。詳細は [samples/README.md](./samples/README.md) を参照してください。
 
-| ファイル | 説明 |
-|----------|------|
-| `samples/sample_minimal.json` | 最小構成（task_idとexecutorのみ） |
-| `samples/sample_dag.json` | 基本的なDAG（LogExecutor使用） |
-| `samples/sample_mcp_dag.json` | MCP連携によるコード分析・README生成 |
-| `samples/sample_embedded_reference.json` | 埋め込み参照（`${...}`）のデモ |
-| `samples/sample_mcp_with_role.json` | Role情報をMCPに渡すデモ |
-| `samples/sample_mcp_with_hungup_timeout.json` | タイムアウト機能のデモ |
-| `samples/sample_if_else.json` | if/else条件付き実行のデモ |
-| `samples/sample_subgraph.json` | サブグラフ実行のデモ |
-| `samples/sample_nested_subgraph.json` | ネストしたサブグラフのデモ（2レベル） |
-| `samples/sample_loop.json` | ループ実行のデモ |
-| `samples/sample_ralph_loop.json` | Ralph Loopパターンのデモ（MCP連携） |
-| `samples/sample_bash.json` | BashExecutorの基本操作デモ |
-| `samples/sample_git.json` | GitExecutorの基本操作デモ |
-| `samples/sample_git_all_operations.json` | GitExecutorの全操作デモ |
-| `samples/sample_github.json` | GitHubExecutorの基本操作デモ |
-| `samples/sample_github_all_operations.json` | GitHubExecutorの全操作デモ |
-| `samples/sample_analysis_test.json` | 静的解析のエラー検出テスト用 |
-| `samples/sample_error_test.json` | エラー検出テスト用 |
-| `samples/large_dag.json` | パフォーマンステスト用（大規模DAG） |
-| `samples/huge_dag.json` | パフォーマンステスト用（超大規模DAG） |
+```
+samples/
+├── basics/          # 入門・基本サンプル
+│   ├── minimal.json
+│   ├── simple_dag.json
+│   ├── embedded_reference.json
+│   └── auto_dependency.json
+├── executors/       # Executor別サンプル
+│   ├── bash.json
+│   ├── data.json
+│   ├── mcp/         # MCP連携
+│   ├── git/         # Git操作
+│   └── github/      # GitHub API
+├── features/        # 高度な機能
+│   ├── loop/        # ループ実行
+│   ├── condition/   # 条件分岐
+│   └── subgraph/    # サブグラフ
+├── workflows/       # 実践的ワークフロー
+└── _internal/       # 内部テスト用
+```
 
 ## ライセンス
 

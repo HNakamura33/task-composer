@@ -78,7 +78,7 @@ task-composer/
 - `LoopContext` - ループ実行コンテキスト（iteration, first, previous_results）
 - `ExecutionResult` - 実行結果（task_id, status, output）
 - `ExecutionStatus` - 実行ステータス（Success, Failed, Skipped）
-- `ResolveContext` - パス解決コンテキスト（previous_results, current_task, loop_context）
+- `ResolveContext` - パス解決コンテキスト（previous_results, current_task, loop_context, inputs）
 
 ## 実装済み機能
 
@@ -94,6 +94,7 @@ task-composer/
 ### パス参照機能
 - `$.{task_id}.output.{field}` - 依存タスクの出力参照
 - `$.self.{field}` - 現在のタスクのフィールド参照
+- `$.inputs.{field}` - サブDAGで親から渡された入力値の参照
 - `${...}` - 文字列内への埋め込み参照
 - ネストしたフィールド、配列インデックス対応
 
@@ -101,7 +102,7 @@ task-composer/
 - フィールド内のパス参照から依存関係を自動的に推論
 - 対象フィールド: `args`, `prompt`, `if`, `else`
 - 直接参照（`$.task_id.output.field`）と埋め込み参照（`${$.task_id.output.field}`）に対応
-- `$.self.*` と `$.loop.*` は自己参照・ループ参照のため除外
+- `$.self.*`、`$.loop.*`、`$.inputs.*` は自己参照・ループ参照・入力参照のため除外
 - 明示的な`dependencies`と自動解決された依存関係はマージされる
 - 存在しないタスクへの参照は無視される（警告なし）
 - `extract_referenced_tasks()` - JSON値から参照タスクIDを抽出
@@ -124,6 +125,8 @@ task-composer/
 
 ### サブグラフ実行
 - `args.dag` でサブDAG定義を指定
+- `args.inputs` で親DAGからサブDAGへ値を渡す
+- サブDAG内で `$.inputs.{field}` で親から渡された値を参照
 - ネストしたサブグラフのサポート（最大3レベル）
 - サブグラフ内でのパス参照（`$.{task_id}.output.{field}`）
 - 親DAGからサブグラフ結果を参照（`$.{subdag_task}.output.{inner_task}.output.{field}`）
@@ -151,7 +154,7 @@ task-composer/
 ```bash
 # 開発時
 cargo test                                  # テスト実行
-cargo run -p task-composer-cli              # samples/sample_dag.json を読み込んで実行
+cargo run -p task-composer-cli              # samples/basics/simple_dag.json を読み込んで実行
 cargo run -p task-composer-cli -- file.json # 指定したJSONを実行
 cargo doc --open                            # ドキュメント生成
 
