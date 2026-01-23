@@ -488,6 +488,10 @@ impl DAG {
             }
         }
 
+        // DEBUG: 初期状態を出力
+        eprintln!("DEBUG: Initial in_degree: {:?}", in_degree);
+        eprintln!("DEBUG: Initial queue: {:?}", queue);
+
         let results: Arc<Mutex<HashMap<String, ExecutionResult>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let (tx, mut rx) = mpsc::channel::<(String, Result<ExecutionResult, String>)>(100);
@@ -500,6 +504,7 @@ impl DAG {
                 let Some(task_id) = queue.pop() else {
                     break;
                 };
+                eprintln!("DEBUG: Processing task from queue: {}", task_id);
                 let task = self.nodes.get(&task_id).unwrap().clone();
                 let tx = tx.clone();
                 let results_clone = Arc::clone(&results);
@@ -638,12 +643,16 @@ impl DAG {
 
                 match result {
                     Ok(exec_result) => {
+                        eprintln!("DEBUG: Task {} completed successfully", task_id);
                         results.lock().unwrap().insert(task_id.clone(), exec_result);
 
                         if let Some(to_list) = self.edges.get(&task_id) {
+                            eprintln!("DEBUG: Task {} has successors: {:?}", task_id, to_list);
                             for to in to_list {
                                 *in_degree.get_mut(to).unwrap() -= 1;
+                                eprintln!("DEBUG: {} in_degree now = {}", to, in_degree[to]);
                                 if in_degree[to] == 0 {
+                                    eprintln!("DEBUG: Adding {} to queue", to);
                                     queue.push(to.clone());
                                 }
                             }
@@ -651,6 +660,13 @@ impl DAG {
                     }
                     Err(e) => {
                         eprintln!("Task {} failed: {}", task_id, e);
+                        // 失敗したタスクもresultsに追加（二重カウント防止）
+                        let failed_result = ExecutionResult {
+                            task_id: task_id.clone(),
+                            status: ExecutionStatus::Failed,
+                            output: serde_json::json!({"error": e}),
+                        };
+                        results.lock().unwrap().insert(task_id, failed_result);
                         failed_count += 1;
                     }
                 }

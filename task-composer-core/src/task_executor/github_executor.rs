@@ -5,9 +5,20 @@
 use async_trait::async_trait;
 use octocrab::models;
 use octocrab::params;
+use octocrab::Error as OctocrabError;
 use octocrab::Octocrab;
 use serde::Deserialize;
 use serde_json::{json, Value};
+
+/// Convert octocrab Error to a detailed error message
+fn format_github_error(e: OctocrabError, context: &str) -> String {
+    match e {
+        OctocrabError::GitHub { source, .. } => {
+            format!("{}: {} (HTTP {})", context, source.message, source.status_code)
+        }
+        _ => format!("{}: {}", context, e),
+    }
+}
 
 use crate::types::Task;
 
@@ -670,7 +681,7 @@ impl GitHubExecutor {
         let pr = builder
             .send()
             .await
-            .map_err(|e| format!("Failed to create PR: {}", e))?;
+            .map_err(|e| format_github_error(e, "Failed to create PR"))?;
 
         Ok(json!({
             "action": "create_pr",

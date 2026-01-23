@@ -160,10 +160,14 @@ fn extract_task_ids_from_string(s: &str, tasks: &mut HashSet<String>) {
     // パターン: $. で始まり .output. を含む参照
     // $.self と $.loop は除外
     // task_idには英数字、ハイフン、アンダースコア、ドットが許可される
-    let path_regex = Regex::new(r"\$\.([a-zA-Z0-9_\-\.]+)\.output\.").unwrap();
+    // 非貪欲マッチ (+?) で最初の .output. までをキャプチャ
+    // これにより $.subdag.output.inner.output.field のような参照で
+    // subdag が正しくtask_idとして抽出される
+    let path_regex = Regex::new(r"\$\.([a-zA-Z0-9_\-\.]+?)\.output\.").unwrap();
 
     // 埋め込み参照: ${$.task_id.output.*}
-    let embedded_regex = Regex::new(r"\$\{\$\.([a-zA-Z0-9_\-\.]+)\.output\.[^}]*\}").unwrap();
+    // 同様に非貪欲マッチを使用
+    let embedded_regex = Regex::new(r"\$\{\$\.([a-zA-Z0-9_\-\.]+?)\.output\.[^}]*\}").unwrap();
 
     // 直接参照を抽出
     for cap in path_regex.captures_iter(s) {
@@ -1924,6 +1928,43 @@ mod tests {
         let refs = extract_referenced_tasks(&value);
 
         assert!(refs.is_empty());
+    }
+
+    #[test]
+    fn test_extract_referenced_tasks_subdag_output() {
+        // サブDAGの出力参照: $.subdag.output.inner_task.output.field
+        // 非貪欲マッチにより、最初の.output.の前のtask_idのみ抽出される
+        let value = json!("${$.implementation_loop.output.run_tests.output.stdout}");
+        let refs = extract_referenced_tasks(&value);
+
+        // implementation_loop のみが抽出される（run_tests ではない）
+        assert_eq!(refs.len(), 1);
+        assert!(refs.contains("implementation_loop"));
+        assert!(!refs.contains("implementation_loop.output.run_tests"));
+    }
+
+    #[test]
+    fn test_extract_referenced_tasks_subdag_output_direct() {
+        // 直接参照パターンでも同様
+        let value = json!("$.subdag_task.output.inner.output.result");
+        let refs = extract_referenced_tasks(&value);
+
+        assert_eq!(refs.len(), 1);
+        assert!(refs.contains("subdag_task"));
+    }
+
+    #[test]
+    fn test_extract_referenced_tasks_multiple_subdag_outputs() {
+        // 複数のサブDAG出力参照
+        let value = json!({
+            "test_result": "${$.impl_loop.output.run_tests.output.stdout}",
+            "build_result": "$.build_loop.output.compile.output.status"
+        });
+        let refs = extract_referenced_tasks(&value);
+
+        assert_eq!(refs.len(), 2);
+        assert!(refs.contains("impl_loop"));
+        assert!(refs.contains("build_loop"));
     }
 
     #[test]
