@@ -111,6 +111,7 @@ mod tests {
         let ctx = ExecutionContext {
             args: serde_json::json!({}),
             env_vars: HashMap::new(),
+            previous_results: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;
@@ -170,6 +171,7 @@ mod tests {
                 "dag": sub_dag_json
             }),
             env_vars: HashMap::new(),
+            previous_results: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;
@@ -191,6 +193,7 @@ mod tests {
                 "dag": "not a valid dag object"
             }),
             env_vars: HashMap::new(),
+            previous_results: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;
@@ -230,6 +233,7 @@ mod tests {
                 "dag": sub_dag_json
             }),
             env_vars: HashMap::new(),
+            previous_results: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;
@@ -276,6 +280,7 @@ mod tests {
                 "dag": sub_dag_json
             }),
             env_vars: HashMap::new(),
+            previous_results: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;

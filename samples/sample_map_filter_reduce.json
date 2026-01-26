@@ -1,0 +1,66 @@
+{
+  "$schema": "sample_map_filter_reduce.json",
+  "description": "map/filter/reduceを使った配列処理のサンプル",
+  "config": {
+    "max_concurrent_tasks": 5
+  },
+  "tasks": [
+    {
+      "task_id": "generate_users",
+      "name": "ユーザー配列の生成",
+      "executor": "data",
+      "args": {
+        "users": [
+          {"name": "Alice", "active": true, "score": 85},
+          {"name": "Bob", "active": false, "score": 70},
+          {"name": "Charlie", "active": true, "score": 90},
+          {"name": "Diana", "active": true, "score": 65},
+          {"name": "Eve", "active": false, "score": 95}
+        ]
+      }
+    },
+    {
+      "task_id": "filter_active",
+      "name": "アクティブユーザーのみフィルタリング",
+      "executor": "filter",
+      "args": {
+        "source": "$.generate_users.output.users",
+        "condition": "$.@item.active == true"
+      }
+    },
+    {
+      "task_id": "process_users",
+      "name": "各ユーザーを処理",
+      "executor": "map",
+      "args": {
+        "source": "$.filter_active.output.items",
+        "inputs": {
+          "user": "$.@item",
+          "index": "$.@index"
+        },
+        "dag": {
+          "tasks": [
+            {
+              "task_id": "greet",
+              "executor": "data",
+              "args": {
+                "greeting": "Hello, user!",
+                "user_name": "$.inputs.user.name",
+                "position": "$.inputs.index"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "task_id": "summarize",
+      "name": "結果のサマリー",
+      "executor": "log",
+      "args": {
+        "message": "フィルタリング結果: ${$.filter_active.output.filtered_length}人 (元: ${$.filter_active.output.original_length}人)",
+        "debug": true
+      }
+    }
+  ]
+}

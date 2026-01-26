@@ -86,6 +86,7 @@ mod tests {
                 "threshold": 0.8
             }),
             env_vars: HashMap::new(),
+            previous_results: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await.unwrap();
@@ -114,6 +115,7 @@ mod tests {
                 "issues": [10, 11, 12]
             }),
             env_vars: HashMap::new(),
+            previous_results: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await.unwrap();
@@ -134,6 +136,7 @@ mod tests {
         let ctx = ExecutionContext {
             args: json!(null),
             env_vars: HashMap::new(),
+            previous_results: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await.unwrap();

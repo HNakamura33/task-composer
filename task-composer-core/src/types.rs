@@ -441,3 +441,145 @@ pub struct LoopContext {
     /// ExecutionResultの循環参照を避けるためserde_json::Valueで保持
     pub previous_results: Option<HashMap<String, serde_json::Value>>,
 }
+
+// =============================================================================
+// Map/Filter/Reduce 関連の型
+// =============================================================================
+
+/// Map実行時のエラーハンドリング方針
+///
+/// 配列の要素処理中にエラーが発生した場合の動作を制御します。
+///
+/// # 使用例
+/// ```json
+/// {
+///   "executor": "map",
+///   "args": {
+///     "on_error": "continue"
+///   }
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OnErrorMode {
+    /// エラー発生時に即座に停止し、全体をエラーとする
+    Stop,
+    /// エラーを記録して続行し、結果にエラー情報を含める
+    Continue,
+    /// エラー項目をスキップし、結果から除外する
+    Skip,
+}
+
+impl Default for OnErrorMode {
+    fn default() -> Self {
+        OnErrorMode::Stop
+    }
+}
+
+/// Map実行結果の出力形式
+///
+/// サブDAG内の複数タスクの結果をどのようにグループ化するかを制御します。
+///
+/// # ByElement（デフォルト）
+/// 要素ごとにグループ化。各要素の処理結果がまとまる。
+/// ```json
+/// {
+///   "results": [
+///     { "index": 0, "output": { "task_a": {...}, "task_b": {...} } },
+///     { "index": 1, "output": { "task_a": {...}, "task_b": {...} } }
+///   ]
+/// }
+/// ```
+///
+/// # ByTask
+/// タスクごとにグループ化。同じタスクの全要素の結果がまとまる。
+/// ```json
+/// {
+///   "task_a": [ {...}, {...} ],
+///   "task_b": [ {...}, {...} ]
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResultFormat {
+    /// 要素ごとにグループ化（デフォルト）
+    ByElement,
+    /// タスクごとにグループ化（GraphAI compositeResult相当）
+    ByTask,
+}
+
+impl Default for ResultFormat {
+    fn default() -> Self {
+        ResultFormat::ByElement
+    }
+}
+
+/// Map/Filter/Reduce実行時のコンテキスト
+///
+/// 配列処理中の各要素に対して参照可能な情報を保持します。
+/// `$.@item`, `$.@index`, `$.@length`, `$.@first`, `$.@last` で参照できます。
+///
+/// # 参照パス
+/// | 参照 | 型 | 意味 |
+/// |------|----|------|
+/// | `$.@item` | any | 現在処理中の要素 |
+/// | `$.@index` | number | 0始まりのインデックス |
+/// | `$.@length` | number | 配列の総要素数 |
+/// | `$.@first` | boolean | 最初の要素かどうか |
+/// | `$.@last` | boolean | 最後の要素かどうか |
+///
+/// # 設計メモ
+/// - `#[derive(Debug, Clone)]` のみ（JSONからは直接デシリアライズしない）
+/// - 実行時にMapExecutor等が構築し、ResolveContextに渡す
+/// - LoopContextと同様のパターン
+#[derive(Debug, Clone)]
+pub struct MapContext {
+    /// 現在処理中の要素
+    pub item: serde_json::Value,
+    /// 0始まりのインデックス
+    pub index: usize,
+    /// 配列の総要素数
+    pub length: usize,
+    /// 最初の要素かどうか
+    pub first: bool,
+    /// 最後の要素かどうか
+    pub last: bool,
+}
+
+impl MapContext {
+    /// 新しいMapContextを作成
+    ///
+    /// # Arguments
+    /// * `item` - 現在の要素
+    /// * `index` - 0始まりのインデックス
+    /// * `length` - 配列の総要素数
+    pub fn new(item: serde_json::Value, index: usize, length: usize) -> Self {
+        MapContext {
+            item,
+            index,
+            length,
+            first: index == 0,
+            last: index == length.saturating_sub(1),
+        }
+    }
+}
+
+/// Reduce実行時の追加コンテキスト
+///
+/// MapContextの情報に加え、累積値（accumulator）を保持します。
+/// `$.@accumulator` で参照できます。
+///
+/// # 参照パス
+/// | 参照 | 型 | 意味 |
+/// |------|----|------|
+/// | `$.@accumulator` | any | 現在の累積値 |
+///
+/// # 設計メモ
+/// - MapContextをラップするのではなく、累積値のみを保持
+/// - ResolveContextには `map_context` と `reduce_context` を別々に設定
+/// - これにより、MapContextの全フィールド（$.@item等）も同時に利用可能
+#[derive(Debug, Clone)]
+pub struct ReduceContext {
+    /// 現在の累積値
+    pub accumulator: serde_json::Value,
+}
