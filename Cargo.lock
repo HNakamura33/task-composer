@@ -5479,6 +5479,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "chrono",
  "git2",
  "octocrab",
  "rand 0.8.5",
@@ -5486,6 +5487,8 @@ dependencies = [
  "rmcp",
  "serde",
  "serde_json",
+ "sha2",
+ "tempfile",
  "tokio",
  "tracing",
 ]

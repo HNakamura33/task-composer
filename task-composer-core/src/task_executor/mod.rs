@@ -40,7 +40,7 @@ pub use reduce_executor::ReduceExecutor;
 /// タスク実行のステータス
 ///
 /// タスクの実行結果を表す列挙型です。
-#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ExecutionStatus {
     /// 実行成功
     Success,

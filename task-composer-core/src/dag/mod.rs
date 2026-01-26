@@ -17,6 +17,8 @@
 //! let order = dag.topological_sort().unwrap();
 //! ```
 
+use crate::checkpoint::{Checkpoint, CheckpointState, CheckpointValidation, compute_dag_hash};
+use crate::checkpoint::writer::{CheckpointWriter, JsonCheckpointWriter};
 use crate::path_resolver::{ResolveContext, evaluate_condition, extract_referenced_tasks, resolve_inputs};
 use crate::task_executor::{
     ExecutionContext, ExecutionResult, ExecutionStatus, ExecutorRegistry, TaskExecutor,
@@ -24,7 +26,9 @@ use crate::task_executor::{
 use crate::types::{Config, LoopConfig, LoopContext, Task};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
@@ -457,15 +461,130 @@ impl DAG {
         }
 
         // 通常実行（ループなし）
-        self.execute_once(None).await
+        self.execute_once(None, None, None).await
+    }
+
+    /// チェックポイント付きでDAGを実行する
+    ///
+    /// 実行中の状態をチェックポイントファイルに保存し、
+    /// 中断・失敗時から再開可能にします。
+    ///
+    /// # Arguments
+    ///
+    /// * `dag_file` - DAGファイルのパス（チェックポイント検証用）
+    /// * `dag_json` - DAG JSONの内容（ハッシュ計算用）
+    /// * `checkpoint_path` - チェックポイントファイルのパス（Noneの場合は`{dag_file}.checkpoint.json`）
+    /// * `shutdown_signal` - シャットダウンシグナル（Ctrl+C等で設定）
+    ///
+    /// # Returns
+    ///
+    /// 実行結果と最終チェックポイント状態のタプル
+    pub async fn execute_with_checkpoint(
+        &mut self,
+        dag_file: &str,
+        dag_json: &str,
+        checkpoint_path: Option<&Path>,
+        shutdown_signal: Option<Arc<AtomicBool>>,
+    ) -> Result<(HashMap<String, ExecutionResult>, CheckpointState), String> {
+        let dag_hash = compute_dag_hash(dag_json);
+
+        // チェックポイントライターを作成
+        let writer: Box<dyn CheckpointWriter> = match checkpoint_path {
+            Some(path) => Box::new(JsonCheckpointWriter::new(path)),
+            None => Box::new(JsonCheckpointWriter::from_dag_file(dag_file)),
+        };
+
+        // 既存のチェックポイントを読み込み
+        let existing_checkpoint = writer.load().map_err(|e| {
+            format!("Failed to load checkpoint: {}", e)
+        })?;
+
+        // チェックポイントがあれば検証
+        let (mut checkpoint, initial_results) = if let Some(cp) = existing_checkpoint {
+            let task_ids: Vec<&str> = self.nodes.keys().map(|s| s.as_str()).collect();
+            match cp.validate(&dag_hash, &task_ids) {
+                CheckpointValidation::Valid => {
+                    eprintln!("[Checkpoint] Resuming from checkpoint: {} completed tasks", cp.completed_count());
+                    let results = cp.to_previous_results();
+                    (cp, Some(results))
+                }
+                CheckpointValidation::DagModified => {
+                    eprintln!("[Checkpoint] Warning: DAG has been modified since checkpoint was created");
+                    eprintln!("[Checkpoint] Starting fresh execution");
+                    (Checkpoint::new(dag_file, &dag_hash), None)
+                }
+                CheckpointValidation::TaskRemoved(task_id) => {
+                    eprintln!("[Checkpoint] Warning: Task '{}' was removed from DAG", task_id);
+                    eprintln!("[Checkpoint] Starting fresh execution");
+                    (Checkpoint::new(dag_file, &dag_hash), None)
+                }
+                CheckpointValidation::VersionMismatch { expected, actual } => {
+                    eprintln!("[Checkpoint] Warning: Version mismatch (expected {}, got {})", expected, actual);
+                    eprintln!("[Checkpoint] Starting fresh execution");
+                    (Checkpoint::new(dag_file, &dag_hash), None)
+                }
+            }
+        } else {
+            (Checkpoint::new(dag_file, &dag_hash), None)
+        };
+
+        // ループ設定がある場合はループ実行（チェックポイント付き）
+        if let Some(loop_config) = self.loop_config.clone() {
+            // TODO: ループ実行のチェックポイント対応
+            let results = self.execute_with_loop(loop_config).await?;
+            checkpoint.set_state(CheckpointState::Completed);
+            writer.save(&checkpoint).map_err(|e| format!("Failed to save checkpoint: {}", e))?;
+            return Ok((results, CheckpointState::Completed));
+        }
+
+        // チェックポイントラッパーを作成
+        let checkpoint_wrapper = Arc::new(Mutex::new(checkpoint));
+        let writer_wrapper = Arc::new(writer);
+
+        // 実行
+        let result = self.execute_once(
+            None,
+            initial_results,
+            Some((Arc::clone(&checkpoint_wrapper), Arc::clone(&writer_wrapper), shutdown_signal)),
+        ).await;
+
+        // 最終状態を取得
+        let final_checkpoint = checkpoint_wrapper.lock().unwrap().clone();
+
+        match result {
+            Ok(results) => {
+                // 成功時は完了状態を保存
+                let mut cp = checkpoint_wrapper.lock().unwrap();
+                cp.set_state(CheckpointState::Completed);
+                writer_wrapper.save(&cp).map_err(|e| format!("Failed to save checkpoint: {}", e))?;
+                Ok((results, CheckpointState::Completed))
+            }
+            Err(e) => {
+                // 失敗時の状態を保存
+                let current_state = final_checkpoint.state.clone();
+                Ok((final_checkpoint.to_previous_results(), current_state))
+            }
+        }
     }
 
     /// DAGを1回実行する（内部メソッド）
     ///
     /// loop_contextがSomeの場合、$.loop.*参照が利用可能になります。
+    ///
+    /// # Arguments
+    ///
+    /// * `loop_context` - ループコンテキスト（ループ実行時）
+    /// * `initial_results` - 初期結果（再開時に使用）
+    /// * `checkpoint_info` - チェックポイント情報（チェックポイント、ライター、シャットダウンシグナル）
     async fn execute_once(
         &mut self,
         loop_context: Option<&LoopContext>,
+        initial_results: Option<HashMap<String, ExecutionResult>>,
+        checkpoint_info: Option<(
+            Arc<Mutex<Checkpoint>>,
+            Arc<Box<dyn CheckpointWriter>>,
+            Option<Arc<AtomicBool>>,
+        )>,
     ) -> Result<HashMap<String, ExecutionResult>, String> {
         let mut in_degree: HashMap<String, usize> = HashMap::new();
 
@@ -492,14 +611,69 @@ impl DAG {
         eprintln!("DEBUG: Initial in_degree: {:?}", in_degree);
         eprintln!("DEBUG: Initial queue: {:?}", queue);
 
-        let results: Arc<Mutex<HashMap<String, ExecutionResult>>> =
-            Arc::new(Mutex::new(HashMap::new()));
+        // 結果マップを初期化（再開時は完了済み結果を設定）
+        let results: Arc<Mutex<HashMap<String, ExecutionResult>>> = Arc::new(Mutex::new(
+            initial_results.unwrap_or_default()
+        ));
+
+        // 再開時: 完了済みタスクの入次数を調整し、後続タスクをキューに追加
+        if !results.lock().unwrap().is_empty() {
+            let completed_tasks: Vec<String> = results.lock().unwrap().keys().cloned().collect();
+            eprintln!("[Resume] Skipping {} completed tasks", completed_tasks.len());
+
+            for task_id in &completed_tasks {
+                // 完了済みタスクの後続タスクの入次数を減らす
+                if let Some(to_list) = self.edges.get(task_id) {
+                    for to in to_list {
+                        if let Some(degree) = in_degree.get_mut(to) {
+                            if *degree > 0 {
+                                *degree -= 1;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // キューを再構築（入次数0かつ未完了のタスク）
+            queue.clear();
+            for (node, &degree) in &in_degree {
+                if degree == 0 && !completed_tasks.contains(node) {
+                    queue.push(node.clone());
+                }
+            }
+            eprintln!("[Resume] Tasks ready to execute: {:?}", queue);
+        }
+
         let (tx, mut rx) = mpsc::channel::<(String, Result<ExecutionResult, String>)>(100);
 
         let mut running_tasks = 0;
         let mut failed_count: usize = 0;
 
+        // チェックポイント保存用のヘルパー関数
+        let save_checkpoint = |cp: &Arc<Mutex<Checkpoint>>, writer: &Arc<Box<dyn CheckpointWriter>>, result: &ExecutionResult| {
+            let mut checkpoint = cp.lock().unwrap();
+            checkpoint.update_task(&result.task_id, result);
+            if let Err(e) = writer.save(&checkpoint) {
+                eprintln!("[Checkpoint] Warning: Failed to save checkpoint: {}", e);
+            }
+        };
+
         loop {
+            // シャットダウンシグナルのチェック
+            if let Some((ref checkpoint, ref writer, ref shutdown_signal)) = checkpoint_info {
+                if let Some(signal) = shutdown_signal {
+                    if signal.load(Ordering::SeqCst) {
+                        eprintln!("[Checkpoint] Shutdown signal received, saving checkpoint...");
+                        let mut cp = checkpoint.lock().unwrap();
+                        cp.set_state(CheckpointState::Interrupted);
+                        if let Err(e) = writer.save(&cp) {
+                            eprintln!("[Checkpoint] Warning: Failed to save checkpoint: {}", e);
+                        }
+                        return Err("Execution interrupted by shutdown signal".to_string());
+                    }
+                }
+            }
+
             while running_tasks < self.config.max_concurrent_tasks {
                 let Some(task_id) = queue.pop() else {
                     break;
@@ -647,7 +821,12 @@ impl DAG {
                 match result {
                     Ok(exec_result) => {
                         eprintln!("DEBUG: Task {} completed successfully", task_id);
-                        results.lock().unwrap().insert(task_id.clone(), exec_result);
+                        results.lock().unwrap().insert(task_id.clone(), exec_result.clone());
+
+                        // チェックポイント保存（成功時）
+                        if let Some((ref checkpoint, ref writer, _)) = checkpoint_info {
+                            save_checkpoint(checkpoint, writer, &exec_result);
+                        }
 
                         if let Some(to_list) = self.edges.get(&task_id) {
                             eprintln!("DEBUG: Task {} has successors: {:?}", task_id, to_list);
@@ -667,10 +846,23 @@ impl DAG {
                         let failed_result = ExecutionResult {
                             task_id: task_id.clone(),
                             status: ExecutionStatus::Failed,
-                            output: serde_json::json!({"error": e}),
+                            output: serde_json::json!({"error": e.clone()}),
                         };
-                        results.lock().unwrap().insert(task_id, failed_result);
+                        results.lock().unwrap().insert(task_id.clone(), failed_result.clone());
                         failed_count += 1;
+
+                        // チェックポイント保存（失敗時）
+                        if let Some((ref checkpoint, ref writer, _)) = checkpoint_info {
+                            let mut cp = checkpoint.lock().unwrap();
+                            cp.update_task(&task_id, &failed_result);
+                            cp.set_state(CheckpointState::Failed {
+                                failed_task: task_id,
+                                error: e,
+                            });
+                            if let Err(err) = writer.save(&cp) {
+                                eprintln!("[Checkpoint] Warning: Failed to save checkpoint: {}", err);
+                            }
+                        }
                     }
                 }
             }
@@ -742,7 +934,7 @@ impl DAG {
             );
 
             // LoopContextを渡して実行
-            results = self.execute_once(Some(&loop_context)).await?;
+            results = self.execute_once(Some(&loop_context), None, None).await?;
             iteration += 1;
 
             // 最大回数チェック
