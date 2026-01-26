@@ -457,7 +457,7 @@ impl DAG {
     pub async fn execute_async(&mut self) -> Result<HashMap<String, ExecutionResult>, String> {
         // ループ設定がある場合はループ実行
         if let Some(loop_config) = self.loop_config.clone() {
-            return self.execute_with_loop(loop_config).await;
+            return self.execute_with_loop(loop_config, None).await;
         }
 
         // 通常実行（ループなし）
@@ -530,10 +530,15 @@ impl DAG {
 
         // ループ設定がある場合はループ実行（チェックポイント付き）
         if let Some(loop_config) = self.loop_config.clone() {
-            // TODO: ループ実行のチェックポイント対応
-            let results = self.execute_with_loop(loop_config).await?;
-            checkpoint.set_state(CheckpointState::Completed);
-            writer.save(&checkpoint).map_err(|e| format!("Failed to save checkpoint: {}", e))?;
+            let checkpoint_wrapper = Arc::new(Mutex::new(checkpoint));
+            let writer_wrapper: Arc<Box<dyn CheckpointWriter>> = Arc::new(writer);
+            let results = self.execute_with_loop(
+                loop_config,
+                Some((Arc::clone(&checkpoint_wrapper), Arc::clone(&writer_wrapper), shutdown_signal)),
+            ).await?;
+            let mut cp = checkpoint_wrapper.lock().unwrap();
+            cp.set_state(CheckpointState::Completed);
+            writer_wrapper.save(&cp).map_err(|e| format!("Failed to save checkpoint: {}", e))?;
             return Ok((results, CheckpointState::Completed));
         }
 
@@ -903,6 +908,7 @@ impl DAG {
     ///
     /// # Arguments
     /// * `config` - ループ設定
+    /// * `checkpoint_info` - チェックポイント情報（チェックポイント、ライター、シャットダウンシグナル）
     ///
     /// # Returns
     /// - `Ok(HashMap<String, ExecutionResult>)`: 最後のイテレーションの実行結果
@@ -910,6 +916,11 @@ impl DAG {
     async fn execute_with_loop(
         &mut self,
         config: LoopConfig,
+        checkpoint_info: Option<(
+            Arc<Mutex<Checkpoint>>,
+            Arc<Box<dyn CheckpointWriter>>,
+            Option<Arc<AtomicBool>>,
+        )>,
     ) -> Result<HashMap<String, ExecutionResult>, String> {
         let mut iteration = 0;
         let mut previous_results: Option<HashMap<String, serde_json::Value>> = None;
@@ -934,7 +945,13 @@ impl DAG {
             );
 
             // LoopContextを渡して実行
-            results = self.execute_once(Some(&loop_context), None, None).await?;
+            results = self.execute_once(
+                Some(&loop_context),
+                None,
+                checkpoint_info.as_ref().map(|(cp, w, s)| {
+                    (Arc::clone(cp), Arc::clone(w), s.clone())
+                }),
+            ).await?;
             iteration += 1;
 
             // 最大回数チェック
