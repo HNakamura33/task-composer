@@ -207,6 +207,7 @@ mod tests {
         ExecutionContext {
             args,
             env_vars: HashMap::new(),
+            previous_results: None,
         }
     }
 

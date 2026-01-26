@@ -22,7 +22,7 @@
 use std::collections::{HashMap, HashSet};
 use regex::Regex;
 use crate::task_executor::ExecutionResult;
-use crate::types::{Task, LoopContext};
+use crate::types::{Task, LoopContext, MapContext, ReduceContext};
 
 /// パス解決時のエラー
 #[derive(Debug, PartialEq)]
@@ -47,13 +47,21 @@ pub enum PathResolveError {
     InputsReferenceWithoutContext,
     /// $.inputs参照でフィールドが見つからない
     InputsFieldNotFound(String),
+    /// $.@参照でmap_contextが必要
+    MapReferenceWithoutContext,
+    /// $.@参照でフィールドが見つからない
+    MapFieldNotFound(String),
+    /// $.@accumulator参照でreduce_contextが必要
+    ReduceReferenceWithoutContext,
 }
 
 /// パス解決のコンテキスト
 ///
-/// `$.self` 参照を解決するために現在のタスク情報を保持する
-/// `$.loop` 参照を解決するためにループコンテキスト情報を保持する
-/// `$.inputs` 参照を解決するために外部入力を保持する
+/// 各種参照を解決するために必要な情報を保持する：
+/// - `$.self` 参照: 現在のタスク情報
+/// - `$.loop` 参照: ループコンテキスト情報
+/// - `$.inputs` 参照: 親DAGからの入力値
+/// - `$.@*` 参照: map/filter/reduce実行時のコンテキスト
 pub struct ResolveContext<'a> {
     /// 依存タスクの実行結果
     pub previous_results: &'a HashMap<String, ExecutionResult>,
@@ -63,6 +71,10 @@ pub struct ResolveContext<'a> {
     pub loop_context: Option<&'a LoopContext>,
     /// 外部入力（$.inputs参照用、サブDAGで親から渡された値）
     pub inputs: Option<&'a serde_json::Value>,
+    /// Mapコンテキスト（$.@item, $.@index等の参照用）
+    pub map_context: Option<&'a MapContext>,
+    /// Reduceコンテキスト（$.@accumulator参照用）
+    pub reduce_context: Option<&'a ReduceContext>,
 }
 
 impl std::fmt::Display for PathResolveError {
@@ -91,6 +103,15 @@ impl std::fmt::Display for PathResolveError {
             }
             PathResolveError::InputsFieldNotFound(field) => {
                 write!(f, "Inputs field not found: {}", field)
+            }
+            PathResolveError::MapReferenceWithoutContext => {
+                write!(f, "$.@ reference requires map_context")
+            }
+            PathResolveError::MapFieldNotFound(field) => {
+                write!(f, "Map field not found: {}", field)
+            }
+            PathResolveError::ReduceReferenceWithoutContext => {
+                write!(f, "$.@accumulator reference requires reduce_context")
             }
         }
     }
@@ -173,8 +194,13 @@ fn extract_task_ids_from_string(s: &str, tasks: &mut HashSet<String>) {
     for cap in path_regex.captures_iter(s) {
         if let Some(task_id_match) = cap.get(1) {
             let task_id = task_id_match.as_str();
-            // $.self, $.loop, $.inputs は除外
-            if task_id != "self" && task_id != "loop" && task_id != "inputs" && !task_id.starts_with("loop.") {
+            // $.self, $.loop, $.inputs, $.@ は除外（依存関係ではない）
+            if task_id != "self"
+                && task_id != "loop"
+                && task_id != "inputs"
+                && !task_id.starts_with("loop.")
+                && !task_id.starts_with('@')
+            {
                 tasks.insert(task_id.to_string());
             }
         }
@@ -184,8 +210,13 @@ fn extract_task_ids_from_string(s: &str, tasks: &mut HashSet<String>) {
     for cap in embedded_regex.captures_iter(s) {
         if let Some(task_id_match) = cap.get(1) {
             let task_id = task_id_match.as_str();
-            // $.self, $.loop, $.inputs は除外
-            if task_id != "self" && task_id != "loop" && task_id != "inputs" && !task_id.starts_with("loop.") {
+            // $.self, $.loop, $.inputs, $.@ は除外（依存関係ではない）
+            if task_id != "self"
+                && task_id != "loop"
+                && task_id != "inputs"
+                && !task_id.starts_with("loop.")
+                && !task_id.starts_with('@')
+            {
                 tasks.insert(task_id.to_string());
             }
         }
@@ -243,6 +274,12 @@ fn resolve_string_value(
     s: &str,
     ctx: &ResolveContext,
 ) -> Result<serde_json::Value, PathResolveError> {
+    // $.@ 参照を含む場合、map_contextがなければ未解決のまま返す
+    // （MapExecutor/FilterExecutor/ReduceExecutor内で解決される）
+    if contains_map_reference(s) && ctx.map_context.is_none() {
+        return Ok(serde_json::Value::String(s.to_string()));
+    }
+
     // パターン1: 全体がパス参照（$で始まり ${} でない）
     if s.starts_with("$.") {
         return resolve_path(s, ctx);
@@ -255,6 +292,11 @@ fn resolve_string_value(
 
     // パターン3: 通常の文字列
     Ok(serde_json::Value::String(s.to_string()))
+}
+
+/// 文字列が$.@参照を含むかチェック
+fn contains_map_reference(s: &str) -> bool {
+    s.contains("$.@")
 }
 
 /// 文字列内の `${...}` 埋め込み参照を解決する
@@ -338,7 +380,14 @@ fn resolve_path(
         return resolve_inputs_reference(field_path, ctx);
     }
 
-    // 5. 依存タスク参照: ".output." を探してtask_idを抽出
+    // 5. $.@ 参照の場合（map/filter/reduce コンテキスト）
+    if path.starts_with('@') {
+        let field_path = path.strip_prefix('@').unwrap_or("");
+        let field_path = field_path.strip_prefix('.').unwrap_or(field_path);
+        return resolve_map_reference(field_path, ctx);
+    }
+
+    // 6. 依存タスク参照: ".output." を探してtask_idを抽出
     let output_marker = ".output.";
     let output_pos = path.find(output_marker).ok_or_else(|| {
         PathResolveError::InvalidPathSyntax(format!("Path must contain '.output.' : $.{}", path))
@@ -452,6 +501,76 @@ fn resolve_inputs_reference(
             PathResolveError::FieldNotFound(f) => PathResolveError::InputsFieldNotFound(f),
             other => other,
         })
+}
+
+/// $.@ 参照を解決する（map/filter/reduce コンテキスト）
+///
+/// MapContextまたはReduceContextから値を取得する
+/// - `$.@item` - 現在処理中の要素
+/// - `$.@index` - 0始まりのインデックス
+/// - `$.@length` - 配列の総要素数
+/// - `$.@first` - 最初の要素かどうか
+/// - `$.@last` - 最後の要素かどうか
+/// - `$.@accumulator` - reduce時の累積値
+/// - `$.@item.field` - 要素のネストしたフィールド
+fn resolve_map_reference(
+    field_path: &str,
+    ctx: &ResolveContext,
+) -> Result<serde_json::Value, PathResolveError> {
+    // accumulator は ReduceContext から取得
+    if field_path == "accumulator" || field_path.starts_with("accumulator.") {
+        let reduce_ctx = ctx.reduce_context.ok_or(PathResolveError::ReduceReferenceWithoutContext)?;
+
+        if field_path == "accumulator" {
+            return Ok(reduce_ctx.accumulator.clone());
+        }
+
+        // accumulator.field のようなネストしたアクセス
+        let rest = field_path.strip_prefix("accumulator.").unwrap();
+        return get_value_by_field_path(&reduce_ctx.accumulator, rest)
+            .map_err(|e| match e {
+                PathResolveError::FieldNotFound(f) => PathResolveError::MapFieldNotFound(f),
+                other => other,
+            });
+    }
+
+    // その他のフィールドは MapContext から取得
+    let map_ctx = ctx.map_context.ok_or(PathResolveError::MapReferenceWithoutContext)?;
+
+    // item - 現在の要素
+    if field_path == "item" || field_path.is_empty() {
+        return Ok(map_ctx.item.clone());
+    }
+    if field_path.starts_with("item.") {
+        let rest = field_path.strip_prefix("item.").unwrap();
+        return get_value_by_field_path(&map_ctx.item, rest)
+            .map_err(|e| match e {
+                PathResolveError::FieldNotFound(f) => PathResolveError::MapFieldNotFound(f),
+                other => other,
+            });
+    }
+
+    // index - インデックス
+    if field_path == "index" {
+        return Ok(serde_json::json!(map_ctx.index));
+    }
+
+    // length - 配列の長さ
+    if field_path == "length" {
+        return Ok(serde_json::json!(map_ctx.length));
+    }
+
+    // first - 最初の要素か
+    if field_path == "first" {
+        return Ok(serde_json::json!(map_ctx.first));
+    }
+
+    // last - 最後の要素か
+    if field_path == "last" {
+        return Ok(serde_json::json!(map_ctx.last));
+    }
+
+    Err(PathResolveError::MapFieldNotFound(field_path.to_string()))
 }
 
 /// $.self 参照を解決する
@@ -983,6 +1102,8 @@ mod tests {
             current_task: None,
             loop_context: None,
             inputs: None,
+            map_context: None,
+            reduce_context: None,
         }
     }
 
@@ -996,6 +1117,8 @@ mod tests {
             current_task: Some(task),
             loop_context: None,
             inputs: None,
+            map_context: None,
+            reduce_context: None,
         }
     }
 
@@ -1009,6 +1132,8 @@ mod tests {
             current_task: None,
             loop_context: Some(loop_ctx),
             inputs: None,
+            map_context: None,
+            reduce_context: None,
         }
     }
 
@@ -1022,6 +1147,39 @@ mod tests {
             current_task: None,
             loop_context: None,
             inputs: Some(inputs),
+            map_context: None,
+            reduce_context: None,
+        }
+    }
+
+    /// map_context付きのテスト用ヘルパー
+    fn ctx_with_map<'a>(
+        results: &'a HashMap<String, ExecutionResult>,
+        map_ctx: &'a MapContext,
+    ) -> ResolveContext<'a> {
+        ResolveContext {
+            previous_results: results,
+            current_task: None,
+            loop_context: None,
+            inputs: None,
+            map_context: Some(map_ctx),
+            reduce_context: None,
+        }
+    }
+
+    /// reduce_context付きのテスト用ヘルパー（map_contextも含む）
+    fn ctx_with_reduce<'a>(
+        results: &'a HashMap<String, ExecutionResult>,
+        map_ctx: &'a MapContext,
+        reduce_ctx: &'a ReduceContext,
+    ) -> ResolveContext<'a> {
+        ResolveContext {
+            previous_results: results,
+            current_task: None,
+            loop_context: None,
+            inputs: None,
+            map_context: Some(map_ctx),
+            reduce_context: Some(reduce_ctx),
         }
     }
 
@@ -1789,6 +1947,8 @@ mod tests {
             current_task: None,
             loop_context: Some(&loop_ctx),
             inputs: None,
+            map_context: None,
+            reduce_context: None,
         };
 
         // iteration check
@@ -2094,5 +2254,257 @@ mod tests {
         assert_eq!(refs.len(), 1);
         assert!(refs.contains("task_a"));
         assert!(!refs.contains("inputs"));
+    }
+
+    // ============================================
+    // $.@ 参照のテスト（map/filter/reduce コンテキスト）
+    // ============================================
+
+    #[test]
+    fn test_map_reference_item() {
+        let results = HashMap::new();
+        let map_ctx = MapContext::new(json!({"name": "Alice", "age": 30}), 0, 3);
+        let ctx = ctx_with_map(&results, &map_ctx);
+
+        // $.@item 全体
+        let input = json!("$.@item");
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, json!({"name": "Alice", "age": 30}));
+
+        // $.@ だけでも item と同じ
+        let input = json!("$.@");
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, json!({"name": "Alice", "age": 30}));
+    }
+
+    #[test]
+    fn test_map_reference_item_nested() {
+        let results = HashMap::new();
+        let map_ctx = MapContext::new(json!({"user": {"name": "Bob"}}), 1, 3);
+        let ctx = ctx_with_map(&results, &map_ctx);
+
+        // $.@item.user.name
+        let input = json!("$.@item.user.name");
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, json!("Bob"));
+    }
+
+    #[test]
+    fn test_map_reference_index() {
+        let results = HashMap::new();
+        let map_ctx = MapContext::new(json!("value"), 2, 5);
+        let ctx = ctx_with_map(&results, &map_ctx);
+
+        let input = json!("$.@index");
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, json!(2));
+    }
+
+    #[test]
+    fn test_map_reference_length() {
+        let results = HashMap::new();
+        let map_ctx = MapContext::new(json!("value"), 0, 10);
+        let ctx = ctx_with_map(&results, &map_ctx);
+
+        let input = json!("$.@length");
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, json!(10));
+    }
+
+    #[test]
+    fn test_map_reference_first() {
+        let results = HashMap::new();
+        // 最初の要素
+        let map_ctx = MapContext::new(json!("first"), 0, 3);
+        let ctx = ctx_with_map(&results, &map_ctx);
+
+        let input = json!("$.@first");
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, json!(true));
+
+        // 2番目の要素
+        let map_ctx = MapContext::new(json!("second"), 1, 3);
+        let ctx = ctx_with_map(&results, &map_ctx);
+
+        let input = json!("$.@first");
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, json!(false));
+    }
+
+    #[test]
+    fn test_map_reference_last() {
+        let results = HashMap::new();
+        // 最後の要素
+        let map_ctx = MapContext::new(json!("last"), 2, 3);
+        let ctx = ctx_with_map(&results, &map_ctx);
+
+        let input = json!("$.@last");
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, json!(true));
+
+        // 最後でない要素
+        let map_ctx = MapContext::new(json!("notlast"), 1, 3);
+        let ctx = ctx_with_map(&results, &map_ctx);
+
+        let input = json!("$.@last");
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, json!(false));
+    }
+
+    #[test]
+    fn test_map_reference_embedded() {
+        let results = HashMap::new();
+        let map_ctx = MapContext::new(json!({"name": "Charlie"}), 2, 5);
+        let ctx = ctx_with_map(&results, &map_ctx);
+
+        // 埋め込み参照
+        let input = json!("Processing ${$.@item.name} (${$.@index}/${$.@length})");
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, json!("Processing Charlie (2/5)"));
+    }
+
+    #[test]
+    fn test_map_reference_without_context() {
+        let results = HashMap::new();
+        let ctx = ctx_without_task(&results); // map_context: None
+
+        // map_contextがない場合は未解決のまま返す（Executor内で解決される）
+        let input = json!("$.@item");
+        let result = resolve_inputs(&input, &ctx);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), json!("$.@item"));
+    }
+
+    #[test]
+    fn test_map_reference_unknown_field() {
+        let results = HashMap::new();
+        let map_ctx = MapContext::new(json!("value"), 0, 1);
+        let ctx = ctx_with_map(&results, &map_ctx);
+
+        let input = json!("$.@unknown");
+        let result = resolve_inputs(&input, &ctx);
+        assert!(matches!(result, Err(PathResolveError::MapFieldNotFound(_))));
+    }
+
+    // ============================================
+    // $.@accumulator 参照のテスト（reduce コンテキスト）
+    // ============================================
+
+    #[test]
+    fn test_reduce_reference_accumulator() {
+        let results = HashMap::new();
+        let map_ctx = MapContext::new(json!(10), 2, 5);
+        let reduce_ctx = ReduceContext {
+            accumulator: json!({"total": 100, "count": 2}),
+        };
+        let ctx = ctx_with_reduce(&results, &map_ctx, &reduce_ctx);
+
+        // $.@accumulator 全体
+        let input = json!("$.@accumulator");
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, json!({"total": 100, "count": 2}));
+    }
+
+    #[test]
+    fn test_reduce_reference_accumulator_nested() {
+        let results = HashMap::new();
+        let map_ctx = MapContext::new(json!(10), 2, 5);
+        let reduce_ctx = ReduceContext {
+            accumulator: json!({"stats": {"sum": 50, "avg": 10}}),
+        };
+        let ctx = ctx_with_reduce(&results, &map_ctx, &reduce_ctx);
+
+        // $.@accumulator.stats.sum
+        let input = json!("$.@accumulator.stats.sum");
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, json!(50));
+    }
+
+    #[test]
+    fn test_reduce_reference_with_item() {
+        let results = HashMap::new();
+        let map_ctx = MapContext::new(json!({"value": 25}), 3, 10);
+        let reduce_ctx = ReduceContext {
+            accumulator: json!({"total": 75}),
+        };
+        let ctx = ctx_with_reduce(&results, &map_ctx, &reduce_ctx);
+
+        // $.@item と $.@accumulator の両方を使用
+        let input = json!({
+            "current": "$.@item.value",
+            "running_total": "$.@accumulator.total",
+            "index": "$.@index"
+        });
+        let resolved = resolve_inputs(&input, &ctx).unwrap();
+        assert_eq!(resolved, json!({
+            "current": 25,
+            "running_total": 75,
+            "index": 3
+        }));
+    }
+
+    #[test]
+    fn test_reduce_reference_without_context() {
+        let results = HashMap::new();
+        let map_ctx = MapContext::new(json!("value"), 0, 1);
+        let ctx = ctx_with_map(&results, &map_ctx); // reduce_context: None
+
+        let input = json!("$.@accumulator");
+        let result = resolve_inputs(&input, &ctx);
+        assert!(matches!(result, Err(PathResolveError::ReduceReferenceWithoutContext)));
+    }
+
+    // ============================================
+    // $.@ 参照の依存関係抽出テスト
+    // ============================================
+
+    #[test]
+    fn test_extract_referenced_tasks_excludes_map_references() {
+        // $.@ への参照は依存関係として抽出されない
+        let value = json!({
+            "prompt": "Processing ${$.@item.name} at index ${$.@index}",
+            "other": "$.task_a.output.result"
+        });
+        let refs = extract_referenced_tasks(&value);
+
+        // @ で始まる参照は除外、task_a のみ含まれる
+        assert_eq!(refs.len(), 1);
+        assert!(refs.contains("task_a"));
+    }
+
+    #[test]
+    fn test_map_context_new() {
+        // MapContext::new のテスト
+        let ctx = MapContext::new(json!("item"), 0, 5);
+        assert!(ctx.first);
+        assert!(!ctx.last);
+        assert_eq!(ctx.index, 0);
+
+        let ctx = MapContext::new(json!("item"), 4, 5);
+        assert!(!ctx.first);
+        assert!(ctx.last);
+        assert_eq!(ctx.index, 4);
+
+        // 要素が1つの場合、firstかつlast
+        let ctx = MapContext::new(json!("item"), 0, 1);
+        assert!(ctx.first);
+        assert!(ctx.last);
+    }
+
+    #[test]
+    fn test_map_reference_in_condition() {
+        let results = HashMap::new();
+        let map_ctx = MapContext::new(json!({"active": true, "count": 5}), 0, 3);
+        let ctx = ctx_with_map(&results, &map_ctx);
+
+        // 条件式での$.@参照
+        let result = evaluate_condition("$.@item.active == true", &ctx);
+        assert_eq!(result, Ok(true));
+
+        let result = evaluate_condition("$.@item.count > 3", &ctx);
+        assert_eq!(result, Ok(true));
+
+        let result = evaluate_condition("$.@first == true", &ctx);
+        assert_eq!(result, Ok(true));
     }
 }
