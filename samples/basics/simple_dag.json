@@ -7,7 +7,7 @@
       "priority": 1,
       "prompt": "Initialize the project and install dependencies",
       "executor": "log",
-      "args": {"env": "development", "verbose": true},
+      "args": { "env": "development", "verbose": true },
       "dependencies": [],
       "role": {
         "role_id": "role_setup",
@@ -40,7 +40,7 @@
       "priority": 2,
       "prompt": "Create database models and relationships",
       "executor": "log",
-      "args": {"schema_version": "v2"},
+      "args": { "schema_version": "v2" },
       "dependencies": ["1"],
       "role": {
         "role_id": "role_db",
@@ -60,7 +60,10 @@
           }
         },
         "file_permissions": {
-          "allowed_paths": ["${project_root}/src", "${project_root}/migrations"],
+          "allowed_paths": [
+            "${project_root}/src/db",
+            "${project_root}/migrations"
+          ],
           "denied_paths": ["${project_root}/.env"],
           "read_only_paths": []
         }
@@ -73,7 +76,7 @@
       "priority": 2,
       "prompt": "Create API routes and handlers",
       "executor": "log",
-      "args": {"api_version": "1.0"},
+      "args": { "api_version": "1.0" },
       "dependencies": ["1"],
       "role": {
         "role_id": "role_api",
