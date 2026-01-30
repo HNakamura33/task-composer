@@ -34,11 +34,21 @@ task-composer/
 │       ├── dag/                 # DAG実装
 │       │   ├── mod.rs
 │       │   └── tests.rs
+│       ├── checkpoint/          # チェックポイント機能
+│       │   ├── mod.rs
+│       │   └── writer.rs
 │       ├── task_executor/       # Executor実装
 │       │   ├── mod.rs
 │       │   ├── log_executor.rs
 │       │   ├── mcp_executor.rs
-│       │   └── dag_executor.rs
+│       │   ├── dag_executor.rs
+│       │   ├── bash_executor.rs
+│       │   ├── data_executor.rs
+│       │   ├── git_executor.rs
+│       │   ├── github_executor.rs
+│       │   ├── map_executor.rs
+│       │   ├── filter_executor.rs
+│       │   └── reduce_executor.rs
 │       └── analysis/            # 静的解析
 │           ├── mod.rs
 │           ├── dag_analysis.rs
@@ -46,21 +56,39 @@ task-composer/
 │           └── conflict/
 ├── task-composer-cli/           # CLIツール
 │   ├── Cargo.toml
-│   └── src/main.rs
+│   └── src/
+│       ├── main.rs
+│       └── signal.rs            # シグナルハンドリング
 ├── task-composer-ui/            # Dioxus UI（Desktop/Web/TUI）
 │   ├── Cargo.toml
 │   ├── Dioxus.toml
 │   └── src/
+│       ├── main.rs
+│       ├── tui_main.rs
+│       ├── components/          # UIコンポーネント
+│       ├── hooks/               # カスタムフック
+│       └── state/               # 状態管理
 ├── mcp_servers/
 │   └── claude_code_mcp/
 │       ├── main.py              # FastMCPサーバー
 │       └── pyproject.toml
 └── samples/                     # サンプルDAGファイル
-    ├── sample_minimal.json      # 最小構成サンプル
-    ├── sample_dag.json          # 基本サンプル
-    ├── sample_mcp_dag.json      # MCP連携サンプル
-    ├── sample_loop.json         # ループ実行サンプル
-    └── ...
+    ├── basics/                  # 基本サンプル
+    │   ├── minimal.json
+    │   ├── simple_dag.json
+    │   ├── auto_dependency.json
+    │   └── embedded_reference.json
+    ├── executors/               # Executor別サンプル
+    │   ├── bash.json
+    │   ├── data.json
+    │   ├── git/
+    │   ├── github/
+    │   └── mcp/
+    ├── features/                # 機能別サンプル
+    │   ├── condition/           # if/else条件
+    │   ├── loop/                # ループ実行
+    │   └── subgraph/            # サブグラフ
+    └── workflows/               # ワークフローサンプル
 ```
 
 ## 主要な構造体

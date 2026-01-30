@@ -820,11 +820,6 @@ task-composer/
 ├── LICENSE                      # Apache 2.0
 ├── README.md
 ├── CLAUDE.md                    # Claude向け指示
-├── samples/                     # サンプルDAGファイル
-│   ├── sample_dag.json
-│   ├── sample_mcp_dag.json
-│   ├── sample_loop.json
-│   └── ...
 ├── task-composer-core/          # コアライブラリ
 │   ├── Cargo.toml
 │   └── src/
@@ -832,19 +827,28 @@ task-composer/
 │       ├── types.rs             # 型定義（Task, Role, Config等）
 │       ├── path_resolver.rs     # パス参照解決
 │       ├── dag/                 # DAG実装
+│       ├── checkpoint/          # チェックポイント機能
 │       ├── task_executor/       # Executor実装
 │       └── analysis/            # 静的解析
 ├── task-composer-cli/           # CLIツール
 │   ├── Cargo.toml
-│   └── src/main.rs
+│   └── src/
+│       ├── main.rs
+│       └── signal.rs            # シグナルハンドリング
 ├── task-composer-ui/            # Dioxus UI（Desktop/Web/TUI）
 │   ├── Cargo.toml
 │   ├── Dioxus.toml
 │   └── src/
-└── mcp_servers/
-    └── claude_code_mcp/
-        ├── main.py              # FastMCPサーバー
-        └── pyproject.toml
+│       ├── main.rs
+│       ├── tui_main.rs
+│       ├── components/          # UIコンポーネント
+│       ├── hooks/               # カスタムフック
+│       └── state/               # 状態管理
+├── mcp_servers/
+│   └── claude_code_mcp/
+│       ├── main.py              # FastMCPサーバー
+│       └── pyproject.toml
+└── samples/                     # サンプルDAGファイル
 ```
 
 ## サンプルファイル
