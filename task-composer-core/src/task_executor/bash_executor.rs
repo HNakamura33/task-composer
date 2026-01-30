@@ -208,6 +208,7 @@ mod tests {
             args,
             env_vars: HashMap::new(),
             previous_results: None,
+            checkpoint_info: None,
         }
     }
 

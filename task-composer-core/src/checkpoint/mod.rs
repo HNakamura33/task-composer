@@ -90,16 +90,51 @@ pub struct TaskCheckpoint {
     pub output: serde_json::Value,
     /// タスク完了日時
     pub completed_at: DateTime<Utc>,
+    /// サブグラフのループイテレーション履歴（完了済み）
+    ///
+    /// DagExecutorでループ実行されたサブグラフの全イテレーション結果を保持します。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loop_iterations: Option<Vec<IterationCheckpoint>>,
+    /// サブグラフの進行中イテレーション
+    ///
+    /// イテレーション途中で中断された場合、ここに進行中の状態が保存されます。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_iteration: Option<InProgressIteration>,
+}
+
+/// 進行中のイテレーション状態
+///
+/// イテレーション途中で中断された場合の再開用データです。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InProgressIteration {
+    /// イテレーション番号（0始まり）
+    pub iteration: usize,
+    /// このイテレーションで完了したタスク（再帰的にネスト可能）
+    pub tasks: HashMap<String, TaskCheckpoint>,
 }
 
 /// ループ実行の状態
+///
+/// 全イテレーションの履歴を保持します。
+/// メモリ上の`LoopContext`は直前1回分のみですが、
+/// チェックポイントファイルには全履歴が保存されます。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoopCheckpointState {
-    /// 現在のイテレーション（0始まり）
-    pub iteration: usize,
-    /// 前回イテレーションの結果（`$.loop.previous.*`参照用）
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub previous_results: Option<HashMap<String, serde_json::Value>>,
+    /// 完了済みイテレーション数
+    pub current_iteration: usize,
+    /// 全イテレーションの結果（index = イテレーション番号）
+    pub iterations: Vec<IterationCheckpoint>,
+}
+
+/// 1イテレーション分のチェックポイントデータ
+///
+/// ループの各イテレーションで実行された全タスクの結果を保持します。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IterationCheckpoint {
+    /// このイテレーションで実行された各タスクの結果
+    pub tasks: HashMap<String, TaskCheckpoint>,
+    /// イテレーション完了日時
+    pub completed_at: DateTime<Utc>,
 }
 
 /// チェックポイントの検証結果
@@ -143,15 +178,230 @@ impl Checkpoint {
     /// * `task_id` - タスクID
     /// * `result` - 実行結果
     pub fn update_task(&mut self, task_id: &str, result: &ExecutionResult) {
+        // 既存のタスクからloop_iterationsとcurrent_iterationを保持
+        let (loop_iterations, current_iteration) = self.tasks.get(task_id)
+            .map(|tc| (tc.loop_iterations.clone(), tc.current_iteration.clone()))
+            .unwrap_or((None, None));
+
         self.tasks.insert(
             task_id.to_string(),
             TaskCheckpoint {
                 status: result.status.clone(),
                 output: result.output.clone(),
                 completed_at: Utc::now(),
+                loop_iterations,
+                current_iteration,
             },
         );
         self.updated_at = Utc::now();
+    }
+
+    /// ループイテレーションの結果を追加（トップレベルループ用）
+    ///
+    /// 完了したイテレーションの全タスク結果をloop_stateに保存します。
+    pub fn add_loop_iteration(&mut self, results: &HashMap<String, ExecutionResult>) {
+        let iter_tasks: HashMap<String, TaskCheckpoint> = results
+            .iter()
+            .map(|(k, v)| {
+                // 既存のタスクからサブグラフ情報を引き継ぐ
+                let (loop_iters, curr_iter) = self.tasks.get(k)
+                    .map(|tc| (tc.loop_iterations.clone(), tc.current_iteration.clone()))
+                    .unwrap_or((None, None));
+                (
+                    k.clone(),
+                    TaskCheckpoint {
+                        status: v.status.clone(),
+                        output: v.output.clone(),
+                        completed_at: Utc::now(),
+                        loop_iterations: loop_iters,
+                        current_iteration: curr_iter,
+                    },
+                )
+            })
+            .collect();
+
+        let iteration = IterationCheckpoint {
+            tasks: iter_tasks,
+            completed_at: Utc::now(),
+        };
+
+        match &mut self.loop_state {
+            Some(state) => {
+                state.iterations.push(iteration);
+                state.current_iteration = state.iterations.len();
+            }
+            None => {
+                self.loop_state = Some(LoopCheckpointState {
+                    current_iteration: 1,
+                    iterations: vec![iteration],
+                });
+            }
+        }
+        self.updated_at = Utc::now();
+    }
+
+    /// サブグラフのイテレーション開始を記録
+    ///
+    /// サブグラフの新しいイテレーションを開始する際に呼ばれます。
+    pub fn start_subgraph_iteration(&mut self, task_id: &str, iteration: usize) {
+        let task = self.tasks.entry(task_id.to_string()).or_insert_with(|| {
+            TaskCheckpoint {
+                status: ExecutionStatus::Success, // 仮のステータス（後で更新）
+                output: serde_json::Value::Null,
+                completed_at: Utc::now(),
+                loop_iterations: None,
+                current_iteration: None,
+            }
+        });
+
+        task.current_iteration = Some(InProgressIteration {
+            iteration,
+            tasks: HashMap::new(),
+        });
+        self.updated_at = Utc::now();
+    }
+
+    /// サブグラフ内のタスク結果を保存
+    ///
+    /// サブグラフ実行中に各タスクが完了した際に呼ばれます。
+    pub fn update_subgraph_task(
+        &mut self,
+        subgraph_task_id: &str,
+        inner_task_id: &str,
+        result: &ExecutionResult,
+    ) {
+        if let Some(task) = self.tasks.get_mut(subgraph_task_id) {
+            if let Some(ref mut current) = task.current_iteration {
+                current.tasks.insert(
+                    inner_task_id.to_string(),
+                    TaskCheckpoint {
+                        status: result.status.clone(),
+                        output: result.output.clone(),
+                        completed_at: Utc::now(),
+                        loop_iterations: None,
+                        current_iteration: None,
+                    },
+                );
+                self.updated_at = Utc::now();
+            }
+        }
+    }
+
+    /// サブグラフのイテレーション完了を記録
+    ///
+    /// current_iterationをloop_iterationsに移動します。
+    pub fn complete_subgraph_iteration(
+        &mut self,
+        task_id: &str,
+        results: &HashMap<String, ExecutionResult>,
+    ) {
+        let task = self.tasks.entry(task_id.to_string()).or_insert_with(|| {
+            TaskCheckpoint {
+                status: ExecutionStatus::Success,
+                output: serde_json::Value::Null,
+                completed_at: Utc::now(),
+                loop_iterations: None,
+                current_iteration: None,
+            }
+        });
+
+        // current_iterationのtasksを使用、なければresultsから作成
+        let iter_tasks: HashMap<String, TaskCheckpoint> = if let Some(ref current) = task.current_iteration {
+            // current_iterationにあるものを使用し、resultsで補完
+            let mut tasks = current.tasks.clone();
+            for (k, v) in results {
+                tasks.entry(k.clone()).or_insert_with(|| TaskCheckpoint {
+                    status: v.status.clone(),
+                    output: v.output.clone(),
+                    completed_at: Utc::now(),
+                    loop_iterations: None,
+                    current_iteration: None,
+                });
+            }
+            tasks
+        } else {
+            results.iter().map(|(k, v)| {
+                (
+                    k.clone(),
+                    TaskCheckpoint {
+                        status: v.status.clone(),
+                        output: v.output.clone(),
+                        completed_at: Utc::now(),
+                        loop_iterations: None,
+                        current_iteration: None,
+                    },
+                )
+            }).collect()
+        };
+
+        let iteration = IterationCheckpoint {
+            tasks: iter_tasks,
+            completed_at: Utc::now(),
+        };
+
+        // loop_iterationsに追加
+        task.loop_iterations
+            .get_or_insert_with(Vec::new)
+            .push(iteration);
+
+        // current_iterationをクリア
+        task.current_iteration = None;
+        self.updated_at = Utc::now();
+    }
+
+    /// 完了済みループイテレーション数を取得（トップレベル）
+    pub fn completed_loop_iterations(&self) -> usize {
+        self.loop_state
+            .as_ref()
+            .map(|s| s.iterations.len())
+            .unwrap_or(0)
+    }
+
+    /// 完了済みサブグラフイテレーション数を取得
+    pub fn completed_subgraph_iterations(&self, task_id: &str) -> usize {
+        self.tasks.get(task_id)
+            .and_then(|tc| tc.loop_iterations.as_ref())
+            .map(|iters| iters.len())
+            .unwrap_or(0)
+    }
+
+    /// 進行中のサブグラフイテレーション情報を取得
+    pub fn get_in_progress_iteration(&self, task_id: &str) -> Option<&InProgressIteration> {
+        self.tasks.get(task_id)
+            .and_then(|tc| tc.current_iteration.as_ref())
+    }
+
+    /// 最後のループイテレーションからprevious_resultsを復元（トップレベル）
+    ///
+    /// ループ再開時に`$.loop.previous.*`参照を解決するために使用します。
+    pub fn last_loop_previous_results(&self) -> Option<HashMap<String, serde_json::Value>> {
+        self.loop_state
+            .as_ref()
+            .and_then(|s| s.iterations.last())
+            .map(|iter| {
+                iter.tasks
+                    .iter()
+                    .filter(|(_, tc)| tc.status == ExecutionStatus::Success)
+                    .map(|(k, v)| (k.clone(), v.output.clone()))
+                    .collect()
+            })
+    }
+
+    /// 最後のサブグラフイテレーションからprevious_resultsを復元
+    pub fn last_subgraph_previous_results(
+        &self,
+        task_id: &str,
+    ) -> Option<HashMap<String, serde_json::Value>> {
+        self.tasks.get(task_id)
+            .and_then(|tc| tc.loop_iterations.as_ref())
+            .and_then(|iters| iters.last())
+            .map(|iter| {
+                iter.tasks
+                    .iter()
+                    .filter(|(_, tc)| tc.status == ExecutionStatus::Success)
+                    .map(|(k, v)| (k.clone(), v.output.clone()))
+                    .collect()
+            })
     }
 
     /// 実行状態を設定

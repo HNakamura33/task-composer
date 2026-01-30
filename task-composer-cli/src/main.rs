@@ -343,7 +343,8 @@ fn run_status(checkpoint_file: &PathBuf) {
     if let Some(ref loop_state) = checkpoint.loop_state {
         println!();
         println!("Loop State:");
-        println!("  Iteration: {}", loop_state.iteration);
+        println!("  Completed iterations: {}", loop_state.iterations.len());
+        println!("  Current iteration: {}", loop_state.current_iteration);
     }
 }
 

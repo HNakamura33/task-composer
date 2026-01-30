@@ -61,9 +61,25 @@ impl TaskExecutor for DagExecutor {
             sub_dag.set_inputs(inputs_value);
         }
 
-        // 6. execute_async()を呼ぶ
-        let results = sub_dag.execute_async().await
-            .map_err(|e| format!("Sub-DAG execution failed: {}", e))?;
+        // 6. サブDAGを実行
+        // チェックポイント情報があり、サブDAGにloop_configがある場合は
+        // チェックポイント付きで実行（イテレーション履歴を保存）
+        let results = if let Some(ref cp_info) = ctx.checkpoint_info {
+            if sub_dag.loop_config.is_some() {
+                sub_dag.execute_as_subgraph(
+                    Arc::clone(&cp_info.checkpoint),
+                    Arc::clone(&cp_info.writer),
+                    &task.task_id,
+                ).await
+                .map_err(|e| format!("Sub-DAG execution failed: {}", e))?
+            } else {
+                sub_dag.execute_async().await
+                    .map_err(|e| format!("Sub-DAG execution failed: {}", e))?
+            }
+        } else {
+            sub_dag.execute_async().await
+                .map_err(|e| format!("Sub-DAG execution failed: {}", e))?
+        };
 
         // 7. 結果をExecutionResultにまとめる
         Ok(ExecutionResult {
@@ -112,6 +128,7 @@ mod tests {
             args: serde_json::json!({}),
             env_vars: HashMap::new(),
             previous_results: None,
+            checkpoint_info: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;
@@ -172,6 +189,7 @@ mod tests {
             }),
             env_vars: HashMap::new(),
             previous_results: None,
+            checkpoint_info: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;
@@ -194,6 +212,7 @@ mod tests {
             }),
             env_vars: HashMap::new(),
             previous_results: None,
+            checkpoint_info: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;
@@ -234,6 +253,7 @@ mod tests {
             }),
             env_vars: HashMap::new(),
             previous_results: None,
+            checkpoint_info: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;
@@ -281,6 +301,7 @@ mod tests {
             }),
             env_vars: HashMap::new(),
             previous_results: None,
+            checkpoint_info: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;

@@ -21,7 +21,8 @@ use crate::checkpoint::{Checkpoint, CheckpointState, CheckpointValidation, compu
 use crate::checkpoint::writer::{CheckpointWriter, JsonCheckpointWriter};
 use crate::path_resolver::{ResolveContext, evaluate_condition, extract_referenced_tasks, resolve_inputs};
 use crate::task_executor::{
-    ExecutionContext, ExecutionResult, ExecutionStatus, ExecutorRegistry, TaskExecutor,
+    CheckpointInfo, ExecutionContext, ExecutionResult, ExecutionStatus, ExecutorRegistry,
+    TaskExecutor,
 };
 use crate::types::{Config, LoopConfig, LoopContext, Task};
 use serde::Deserialize;
@@ -457,11 +458,39 @@ impl DAG {
     pub async fn execute_async(&mut self) -> Result<HashMap<String, ExecutionResult>, String> {
         // ループ設定がある場合はループ実行
         if let Some(loop_config) = self.loop_config.clone() {
-            return self.execute_with_loop(loop_config, None).await;
+            return self.execute_with_loop(loop_config, None, None).await;
         }
 
         // 通常実行（ループなし）
-        self.execute_once(None, None, None).await
+        self.execute_once(None, None, None, None).await
+    }
+
+    /// サブグラフとしてチェックポイント付きでDAGを実行する
+    ///
+    /// DagExecutorから呼ばれ、サブグラフのループイテレーション履歴を
+    /// 親のチェックポイントに保存します。
+    ///
+    /// # Arguments
+    ///
+    /// * `checkpoint` - 親DAGのチェックポイント
+    /// * `writer` - チェックポイントライター
+    /// * `subgraph_task_id` - サブグラフの親タスクID
+    pub async fn execute_as_subgraph(
+        &mut self,
+        checkpoint: Arc<Mutex<Checkpoint>>,
+        writer: Arc<Box<dyn CheckpointWriter>>,
+        subgraph_task_id: &str,
+    ) -> Result<HashMap<String, ExecutionResult>, String> {
+        if let Some(loop_config) = self.loop_config.clone() {
+            return self.execute_with_loop(
+                loop_config,
+                Some((checkpoint, writer, None)),
+                Some(subgraph_task_id),
+            ).await;
+        }
+
+        // ループなしの場合は通常実行（サブグラフとして実行）
+        self.execute_once(None, None, None, Some(subgraph_task_id)).await
     }
 
     /// チェックポイント付きでDAGを実行する
@@ -535,6 +564,7 @@ impl DAG {
             let results = self.execute_with_loop(
                 loop_config,
                 Some((Arc::clone(&checkpoint_wrapper), Arc::clone(&writer_wrapper), shutdown_signal)),
+                None,
             ).await?;
             let mut cp = checkpoint_wrapper.lock().unwrap();
             cp.set_state(CheckpointState::Completed);
@@ -551,6 +581,7 @@ impl DAG {
             None,
             initial_results,
             Some((Arc::clone(&checkpoint_wrapper), Arc::clone(&writer_wrapper), shutdown_signal)),
+            None,
         ).await;
 
         // 最終状態を取得
@@ -581,6 +612,7 @@ impl DAG {
     /// * `loop_context` - ループコンテキスト（ループ実行時）
     /// * `initial_results` - 初期結果（再開時に使用）
     /// * `checkpoint_info` - チェックポイント情報（チェックポイント、ライター、シャットダウンシグナル）
+    /// * `subgraph_task_id` - サブグラフの親タスクID（サブグラフ実行時のみ）
     async fn execute_once(
         &mut self,
         loop_context: Option<&LoopContext>,
@@ -590,6 +622,7 @@ impl DAG {
             Arc<Box<dyn CheckpointWriter>>,
             Option<Arc<AtomicBool>>,
         )>,
+        subgraph_task_id: Option<&str>,
     ) -> Result<HashMap<String, ExecutionResult>, String> {
         let mut in_degree: HashMap<String, usize> = HashMap::new();
 
@@ -655,9 +688,15 @@ impl DAG {
         let mut failed_count: usize = 0;
 
         // チェックポイント保存用のヘルパー関数
+        let subgraph_id = subgraph_task_id.map(|s| s.to_string());
         let save_checkpoint = |cp: &Arc<Mutex<Checkpoint>>, writer: &Arc<Box<dyn CheckpointWriter>>, result: &ExecutionResult| {
             let mut checkpoint = cp.lock().unwrap();
-            checkpoint.update_task(&result.task_id, result);
+            // サブグラフ実行時は親タスクのcurrent_iteration.tasksに保存
+            if let Some(ref sg_id) = subgraph_id {
+                checkpoint.update_subgraph_task(sg_id, &result.task_id, result);
+            } else {
+                checkpoint.update_task(&result.task_id, result);
+            }
             if let Err(e) = writer.save(&checkpoint) {
                 eprintln!("[Checkpoint] Warning: Failed to save checkpoint: {}", e);
             }
@@ -763,10 +802,23 @@ impl DAG {
                     format!("Failed to resolve args for task {}: {}", task.task_id, e)
                 })?;
 
+                // DagExecutor用にチェックポイント情報を準備
+                let ctx_checkpoint_info = if task.executor == "dag" {
+                    checkpoint_info.as_ref().map(|(cp, w, _)| {
+                        CheckpointInfo {
+                            checkpoint: Arc::clone(cp),
+                            writer: Arc::clone(w),
+                        }
+                    })
+                } else {
+                    None
+                };
+
                 let ctx = ExecutionContext {
                     args: resolved_args,
                     env_vars: HashMap::new(),
                     previous_results: Some(previous_results.clone()),
+                    checkpoint_info: ctx_checkpoint_info,
                 };
 
                 let registry = Arc::clone(&self.registry);
@@ -859,7 +911,12 @@ impl DAG {
                         // チェックポイント保存（失敗時）
                         if let Some((ref checkpoint, ref writer, _)) = checkpoint_info {
                             let mut cp = checkpoint.lock().unwrap();
-                            cp.update_task(&task_id, &failed_result);
+                            // サブグラフ実行時は親タスクのcurrent_iteration.tasksに保存
+                            if let Some(ref sg_id) = subgraph_id {
+                                cp.update_subgraph_task(sg_id, &task_id, &failed_result);
+                            } else {
+                                cp.update_task(&task_id, &failed_result);
+                            }
                             cp.set_state(CheckpointState::Failed {
                                 failed_task: task_id,
                                 error: e,
@@ -906,9 +963,13 @@ impl DAG {
     /// DAGを繰り返し実行し、条件に基づいてループを制御します。
     /// 前回イテレーションの結果は`$.loop.previous.*`で参照可能です。
     ///
+    /// チェックポイントが有効な場合、各イテレーション完了時に結果を保存し、
+    /// 中断時に完了済みイテレーションからの再開が可能です。
+    ///
     /// # Arguments
     /// * `config` - ループ設定
     /// * `checkpoint_info` - チェックポイント情報（チェックポイント、ライター、シャットダウンシグナル）
+    /// * `subgraph_task_id` - サブグラフの親タスクID（トップレベルループの場合はNone）
     ///
     /// # Returns
     /// - `Ok(HashMap<String, ExecutionResult>)`: 最後のイテレーションの実行結果
@@ -921,17 +982,102 @@ impl DAG {
             Arc<Box<dyn CheckpointWriter>>,
             Option<Arc<AtomicBool>>,
         )>,
+        subgraph_task_id: Option<&str>,
     ) -> Result<HashMap<String, ExecutionResult>, String> {
         let mut iteration = 0;
         let mut previous_results: Option<HashMap<String, serde_json::Value>> = None;
         let mut results: HashMap<String, ExecutionResult>;
+        let mut in_progress_tasks: Option<HashMap<String, ExecutionResult>> = None;
+
+        // チェックポイントからの再開チェック
+        if let Some((ref cp_arc, _, _)) = checkpoint_info {
+            let cp = cp_arc.lock().unwrap();
+
+            // 完了済みイテレーション数を確認
+            let completed = match subgraph_task_id {
+                Some(task_id) => cp.completed_subgraph_iterations(task_id),
+                None => cp.completed_loop_iterations(),
+            };
+
+            // 進行中イテレーションがあるかチェック（サブグラフのみ）
+            let in_progress = if let Some(task_id) = subgraph_task_id {
+                cp.get_in_progress_iteration(task_id)
+            } else {
+                None
+            };
+
+            if let Some(in_prog) = in_progress {
+                // 進行中イテレーションから再開
+                eprintln!(
+                    "[Checkpoint] Resuming from in-progress iteration {} ({} tasks completed)",
+                    in_prog.iteration, in_prog.tasks.len()
+                );
+                iteration = in_prog.iteration;
+
+                // 完了済みタスクをExecutionResultに変換
+                in_progress_tasks = Some(
+                    in_prog.tasks.iter()
+                        .filter(|(_, tc)| tc.status == ExecutionStatus::Success)
+                        .map(|(k, tc)| {
+                            (k.clone(), ExecutionResult {
+                                task_id: k.clone(),
+                                status: tc.status.clone(),
+                                output: tc.output.clone(),
+                            })
+                        })
+                        .collect()
+                );
+
+                // 前回イテレーションの結果を取得（iteration > 0の場合）
+                if iteration > 0 {
+                    previous_results = match subgraph_task_id {
+                        Some(task_id) => cp.last_subgraph_previous_results(task_id),
+                        None => cp.last_loop_previous_results(),
+                    };
+                }
+            } else if completed > 0 {
+                // 完了済みイテレーションから再開（次のイテレーションを開始）
+                eprintln!(
+                    "[Checkpoint] Resuming loop from iteration {} ({} completed)",
+                    completed, completed
+                );
+                iteration = completed;
+                previous_results = match subgraph_task_id {
+                    Some(task_id) => cp.last_subgraph_previous_results(task_id),
+                    None => cp.last_loop_previous_results(),
+                };
+            }
+        }
 
         println!(
-            "  [Loop execution started: max_iterations={}]",
-            config.max_iterations
+            "  [Loop execution started: max_iterations={}, starting_at={}]",
+            config.max_iterations, iteration
         );
 
         loop {
+            // 最大回数チェック（再開時にすでに到達している可能性）
+            if iteration >= config.max_iterations {
+                // 再開時にすでに完了している場合、最後のイテレーション結果を返す
+                if let Some(prev) = &previous_results {
+                    results = prev
+                        .iter()
+                        .map(|(k, v)| {
+                            (
+                                k.clone(),
+                                ExecutionResult {
+                                    task_id: k.clone(),
+                                    status: ExecutionStatus::Success,
+                                    output: v.clone(),
+                                },
+                            )
+                        })
+                        .collect();
+                    break;
+                }
+                println!("  [Loop terminated: max_iterations already reached]");
+                return Ok(HashMap::new());
+            }
+
             // LoopContextを構築
             let loop_context = LoopContext {
                 iteration,
@@ -944,14 +1090,47 @@ impl DAG {
                 iteration, loop_context.first
             );
 
+            // 進行中タスクからの再開でない場合のみイテレーション開始を記録
+            if in_progress_tasks.is_none() {
+                if let Some((ref cp_arc, ref writer, _)) = checkpoint_info {
+                    let mut cp = cp_arc.lock().unwrap();
+                    if let Some(task_id) = subgraph_task_id {
+                        cp.start_subgraph_iteration(task_id, iteration);
+                    } else {
+                        cp.tasks.clear();
+                    }
+                    if let Err(e) = writer.save(&cp) {
+                        eprintln!("[Checkpoint] Warning: Failed to save iteration start: {}", e);
+                    }
+                }
+            }
+
             // LoopContextを渡して実行
+            // 進行中タスクがあれば初期結果として渡し、使用後はクリア
+            let initial_results_for_iteration = in_progress_tasks.take();
             results = self.execute_once(
                 Some(&loop_context),
-                None,
+                initial_results_for_iteration,
                 checkpoint_info.as_ref().map(|(cp, w, s)| {
                     (Arc::clone(cp), Arc::clone(w), s.clone())
                 }),
+                subgraph_task_id,
             ).await?;
+
+            // イテレーション結果をチェックポイントに保存
+            if let Some((ref cp_arc, ref writer, _)) = checkpoint_info {
+                let mut cp = cp_arc.lock().unwrap();
+                match subgraph_task_id {
+                    Some(task_id) => {
+                        cp.complete_subgraph_iteration(task_id, &results);
+                    }
+                    None => cp.add_loop_iteration(&results),
+                }
+                if let Err(e) = writer.save(&cp) {
+                    eprintln!("[Checkpoint] Warning: Failed to save loop iteration: {}", e);
+                }
+            }
+
             iteration += 1;
 
             // 最大回数チェック
@@ -991,7 +1170,6 @@ impl DAG {
             }
 
             // 今回の結果を次回の previous_results として保存
-            // ExecutionResult.output をserde_json::Valueとして保存
             previous_results = Some(
                 results
                     .iter()
