@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "dag_file": "samples/sample_map_filter_reduce.json",
+  "dag_hash": "sha256:006142a0372c557a4f036216f9678fb3d7234ae5321edd56ff0823bd790b4438",
+  "created_at": "2026-01-28T11:33:38.818410Z",
+  "updated_at": "2026-01-28T11:33:39.162182Z",
+  "state": {
+    "type": "Completed"
+  },
+  "tasks": {
+    "generate_users": {
+      "status": "Success",
+      "output": {
+        "users": [
+          {
+            "active": true,
+            "name": "Alice",
+            "score": 85
+          },
+          {
+            "active": false,
+            "name": "Bob",
+            "score": 70
+          },
+          {
+            "active": true,
+            "name": "Charlie",
+            "score": 90
+          },
+          {
+            "active": true,
+            "name": "Diana",
+            "score": 65
+          },
+          {
+            "active": false,
+            "name": "Eve",
+            "score": 95
+          }
+        ]
+      },
+      "completed_at": "2026-01-28T11:33:38.818506Z"
+    },
+    "process_users": {
+      "status": "Success",
+      "output": {
+        "failed": 0,
+        "length": 3,
+        "results": [
+          {
+            "index": 0,
+            "output": {
+              "greet": {
+                "greeting": "Hello, user!",
+                "position": 0,
+                "user_name": "Alice"
+              }
+            },
+            "status": "success"
+          },
+          {
+            "index": 1,
+            "output": {
+              "greet": {
+                "greeting": "Hello, user!",
+                "position": 1,
+                "user_name": "Charlie"
+              }
+            },
+            "status": "success"
+          },
+          {
+            "index": 2,
+            "output": {
+              "greet": {
+                "greeting": "Hello, user!",
+                "position": 2,
+                "user_name": "Diana"
+              }
+            },
+            "status": "success"
+          }
+        ],
+        "skipped": 0,
+        "succeeded": 3
+      },
+      "completed_at": "2026-01-28T11:33:38.820316Z"
+    },
+    "filter_active": {
+      "status": "Success",
+      "output": {
+        "filtered_length": 3,
+        "indices": [
+          0,
+          2,
+          3
+        ],
+        "items": [
+          {
+            "active": true,
+            "name": "Alice",
+            "score": 85
+          },
+          {
+            "active": true,
+            "name": "Charlie",
+            "score": 90
+          },
+          {
+            "active": true,
+            "name": "Diana",
+            "score": 65
+          }
+        ],
+        "original_length": 5
+      },
+      "completed_at": "2026-01-28T11:33:38.819082Z"
+    },
+    "summarize": {
+      "status": "Success",
+      "output": {
+        "executor": "log",
+        "message": "Task '結果のサマリー' logged successfully",
+        "task_id": "summarize"
+      },
+      "completed_at": "2026-01-28T11:33:39.160931Z"
+    }
+  }
+}

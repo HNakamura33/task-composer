@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "dag_file": "samples/basics/simple_dag.json",
+  "dag_hash": "sha256:602d58dc4b5718999d2c5b631f0504196d6e3187f87b2cf95ba7cc109ef2f46a",
+  "created_at": "2026-01-26T18:10:42.246476Z",
+  "updated_at": "2026-01-26T18:44:30.322144Z",
+  "state": {
+    "type": "Completed"
+  },
+  "tasks": {
+    "3": {
+      "status": "Success",
+      "output": {
+        "executor": "log",
+        "message": "Task 'Implement API' logged successfully",
+        "task_id": "3"
+      },
+      "completed_at": "2026-01-26T18:10:42.599442Z"
+    },
+    "1": {
+      "status": "Success",
+      "output": {
+        "executor": "log",
+        "message": "Task 'Setup Environment' logged successfully",
+        "task_id": "1"
+      },
+      "completed_at": "2026-01-26T18:10:42.452681Z"
+    },
+    "4": {
+      "status": "Success",
+      "output": {
+        "executor": "log",
+        "message": "Task 'Integration' logged successfully",
+        "task_id": "4"
+      },
+      "completed_at": "2026-01-26T18:10:43.474790Z"
+    },
+    "2": {
+      "status": "Success",
+      "output": {
+        "executor": "log",
+        "message": "Task 'Design Database' logged successfully",
+        "task_id": "2"
+      },
+      "completed_at": "2026-01-26T18:10:42.870203Z"
+    }
+  }
+}
