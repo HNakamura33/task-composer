@@ -48,6 +48,7 @@
     }
   ],
   "config": {
-    "max_concurrent_tasks": 1
+    "max_concurrent_tasks": 1,
+    "timeout": 1200
   }
 }

@@ -1,0 +1,50 @@
+{
+  "description": "Subgraph loop checkpoint test",
+  "tasks": [
+    {
+      "task_id": "setup",
+      "executor": "data",
+      "args": {
+        "message": "Starting subgraph loop test"
+      }
+    },
+    {
+      "task_id": "subgraph_with_loop",
+      "executor": "dag",
+      "dependencies": ["setup"],
+      "args": {
+        "dag": {
+          "loop_config": {
+            "max_iterations": 4,
+            "until_condition": "$.counter.output.value >= 2"
+          },
+          "tasks": [
+            {
+              "task_id": "counter",
+              "executor": "data",
+              "args": {
+                "value": "$.loop.iteration"
+              }
+            },
+            {
+              "task_id": "log_inner",
+              "executor": "log",
+              "dependencies": ["counter"],
+              "args": {
+                "message": "Inner loop iteration ${$.loop.iteration}"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "task_id": "final",
+      "executor": "log",
+      "dependencies": ["subgraph_with_loop"],
+      "args": {
+        "message": "Subgraph completed"
+      }
+    }
+  ]
+}

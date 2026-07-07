@@ -227,6 +227,7 @@ mod tests {
             }),
             env_vars: HashMap::new(),
             previous_results: None,
+            checkpoint_info: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;
@@ -260,6 +261,7 @@ mod tests {
             }),
             env_vars: HashMap::new(),
             previous_results: Some(previous),
+            checkpoint_info: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;
@@ -294,6 +296,7 @@ mod tests {
             }),
             env_vars: HashMap::new(),
             previous_results: Some(previous),
+            checkpoint_info: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;
@@ -330,6 +333,7 @@ mod tests {
             }),
             env_vars: HashMap::new(),
             previous_results: Some(previous),
+            checkpoint_info: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;
@@ -374,6 +378,7 @@ mod tests {
             }),
             env_vars: HashMap::new(),
             previous_results: Some(previous),
+            checkpoint_info: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;
@@ -417,6 +422,7 @@ mod tests {
             }),
             env_vars: HashMap::new(),
             previous_results: Some(previous),
+            checkpoint_info: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;
@@ -453,6 +459,7 @@ mod tests {
             }),
             env_vars: HashMap::new(),
             previous_results: Some(previous),
+            checkpoint_info: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;
@@ -489,6 +496,7 @@ mod tests {
             }),
             env_vars: HashMap::new(),
             previous_results: Some(previous),
+            checkpoint_info: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;
@@ -526,6 +534,7 @@ mod tests {
             }),
             env_vars: HashMap::new(),
             previous_results: Some(previous),
+            checkpoint_info: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await;

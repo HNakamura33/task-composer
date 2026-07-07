@@ -87,6 +87,7 @@ mod tests {
             }),
             env_vars: HashMap::new(),
             previous_results: None,
+            checkpoint_info: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await.unwrap();
@@ -116,6 +117,7 @@ mod tests {
             }),
             env_vars: HashMap::new(),
             previous_results: None,
+            checkpoint_info: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await.unwrap();
@@ -137,6 +139,7 @@ mod tests {
             args: json!(null),
             env_vars: HashMap::new(),
             previous_results: None,
+            checkpoint_info: None,
         };
 
         let result = executor.execute_task(&task, &ctx).await.unwrap();

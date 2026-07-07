@@ -23,6 +23,9 @@ pub mod mcp_executor;
 pub mod reduce_executor;
 
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use crate::checkpoint::Checkpoint;
+use crate::checkpoint::writer::CheckpointWriter;
 use crate::types::Task;
 use async_trait::async_trait;
 
@@ -37,10 +40,12 @@ pub use map_executor::MapExecutor;
 pub use mcp_executor::{ConnectionConfig, McpExecutor};
 pub use reduce_executor::ReduceExecutor;
 
+// チェックポイント関連の型を再エクスポート（DagExecutor等で使用）
+
 /// タスク実行のステータス
 ///
 /// タスクの実行結果を表す列挙型です。
-#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ExecutionStatus {
     /// 実行成功
     Success,
@@ -71,6 +76,22 @@ pub struct ExecutionResult {
     pub output: serde_json::Value,
 }
 
+/// チェックポイント情報
+///
+/// DagExecutorがサブグラフのループ実行中にチェックポイントを保存するために使用します。
+pub struct CheckpointInfo {
+    /// 共有チェックポイント
+    pub checkpoint: Arc<Mutex<Checkpoint>>,
+    /// チェックポイントライター
+    pub writer: Arc<Box<dyn CheckpointWriter>>,
+}
+
+impl std::fmt::Debug for CheckpointInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CheckpointInfo").finish()
+    }
+}
+
 /// タスク実行時のコンテキスト
 ///
 /// Executorがタスクを実行する際に必要な情報を提供します。
@@ -82,6 +103,8 @@ pub struct ExecutionContext {
     pub env_vars: HashMap<String, String>,
     /// 依存タスクの実行結果（MapExecutor等で使用）
     pub previous_results: Option<HashMap<String, ExecutionResult>>,
+    /// チェックポイント情報（DagExecutorのサブグラフループ実行用）
+    pub checkpoint_info: Option<CheckpointInfo>,
 }
 
 /// タスク実行時のエラー

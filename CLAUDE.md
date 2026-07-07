@@ -34,11 +34,21 @@ task-composer/
 │       ├── dag/                 # DAG実装
 │       │   ├── mod.rs
 │       │   └── tests.rs
+│       ├── checkpoint/          # チェックポイント機能
+│       │   ├── mod.rs
+│       │   └── writer.rs
 │       ├── task_executor/       # Executor実装
 │       │   ├── mod.rs
 │       │   ├── log_executor.rs
 │       │   ├── mcp_executor.rs
-│       │   └── dag_executor.rs
+│       │   ├── dag_executor.rs
+│       │   ├── bash_executor.rs
+│       │   ├── data_executor.rs
+│       │   ├── git_executor.rs
+│       │   ├── github_executor.rs
+│       │   ├── map_executor.rs
+│       │   ├── filter_executor.rs
+│       │   └── reduce_executor.rs
 │       └── analysis/            # 静的解析
 │           ├── mod.rs
 │           ├── dag_analysis.rs
@@ -46,21 +56,39 @@ task-composer/
 │           └── conflict/
 ├── task-composer-cli/           # CLIツール
 │   ├── Cargo.toml
-│   └── src/main.rs
+│   └── src/
+│       ├── main.rs
+│       └── signal.rs            # シグナルハンドリング
 ├── task-composer-ui/            # Dioxus UI（Desktop/Web/TUI）
 │   ├── Cargo.toml
 │   ├── Dioxus.toml
 │   └── src/
+│       ├── main.rs
+│       ├── tui_main.rs
+│       ├── components/          # UIコンポーネント
+│       ├── hooks/               # カスタムフック
+│       └── state/               # 状態管理
 ├── mcp_servers/
 │   └── claude_code_mcp/
 │       ├── main.py              # FastMCPサーバー
 │       └── pyproject.toml
 └── samples/                     # サンプルDAGファイル
-    ├── sample_minimal.json      # 最小構成サンプル
-    ├── sample_dag.json          # 基本サンプル
-    ├── sample_mcp_dag.json      # MCP連携サンプル
-    ├── sample_loop.json         # ループ実行サンプル
-    └── ...
+    ├── basics/                  # 基本サンプル
+    │   ├── minimal.json
+    │   ├── simple_dag.json
+    │   ├── auto_dependency.json
+    │   └── embedded_reference.json
+    ├── executors/               # Executor別サンプル
+    │   ├── bash.json
+    │   ├── data.json
+    │   ├── git/
+    │   ├── github/
+    │   └── mcp/
+    ├── features/                # 機能別サンプル
+    │   ├── condition/           # if/else条件
+    │   ├── loop/                # ループ実行
+    │   └── subgraph/            # サブグラフ
+    └── workflows/               # ワークフローサンプル
 ```
 
 ## 主要な構造体
@@ -79,6 +107,11 @@ task-composer/
 - `ExecutionResult` - 実行結果（task_id, status, output）
 - `ExecutionStatus` - 実行ステータス（Success, Failed, Skipped）
 - `ResolveContext` - パス解決コンテキスト（previous_results, current_task, loop_context, inputs）
+- `Checkpoint` - チェックポイント（dag_hash, state, tasks, loop_state）
+- `CheckpointState` - チェックポイント状態（NotStarted, InProgress, Completed, Failed）
+- `TaskCheckpoint` - タスクチェックポイント（status, output, completed_at, loop_iterations, current_iteration）
+- `LoopCheckpointState` - ループ状態（current_iteration, iterations）
+- `IterationCheckpoint` - イテレーションチェックポイント（tasks, completed_at）
 
 ## 実装済み機能
 
@@ -143,6 +176,17 @@ task-composer/
 - `config.default_task_timeout_secs` - 全タスク共通のデフォルトタイムアウト（秒）
 - `task.timeout_secs` - タスク個別のタイムアウト（秒）、Configより優先
 - タイムアウト時はタスクが失敗扱いになる
+
+### チェックポイント/レジューム機能
+- `--checkpoint` / `-c` オプションでチェックポイント付き実行
+- 完了タスクの結果をJSONファイル（`<file>.checkpoint.json`）に保存
+- Ctrl+Cで安全に中断（グレースフルシャットダウン）
+- 再実行時に自動的に途中から再開
+- DAGハッシュによる変更検出（変更時は警告）
+- ループ実行のイテレーション状態を保持
+- サブグラフ（DagExecutor）内のループ実行もサポート
+- `execute_with_checkpoint()` - チェックポイント付き実行
+- `execute_as_subgraph()` - サブグラフとしてチェックポイント付き実行
 
 ### MCP Server (Python)
 - `claude_code_query` - Claude Codeへのクエリ実行

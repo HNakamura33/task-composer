@@ -1,0 +1,141 @@
+{
+  "description": "コレクションライブラリの並行開発 - Stack, Queue, BinaryTreeをRalph Loopで並行TDD実装",
+  "tasks": [
+    {
+      "task_id": "define_modules",
+      "name": "コレクションモジュールの定義",
+      "executor": "data",
+      "args": {
+        "modules": [
+          {
+            "name": "stack",
+            "description": "push, pop, peek, is_empty操作を持つスタックデータ構造",
+            "cwd": "/tmp/collections/stack"
+          },
+          {
+            "name": "queue",
+            "description": "enqueue, dequeue, peek, is_empty操作を持つキューデータ構造",
+            "cwd": "/tmp/collections/queue"
+          },
+          {
+            "name": "binary_tree",
+            "description": "insert, search, in_order走査を持つ二分探索木",
+            "cwd": "/tmp/collections/binary_tree"
+          }
+        ],
+        "project_name": "rust-collections"
+      }
+    },
+    {
+      "task_id": "setup_modules",
+      "name": "各モジュールのプロジェクトとテストコードをセットアップ",
+      "executor": "map",
+      "args": {
+        "source": "$.define_modules.output.modules",
+        "max_concurrency": 1,
+        "inputs": {
+          "module": "$.@item"
+        },
+        "dag": {
+          "tasks": [
+            {
+              "task_id": "setup",
+              "name": "プロジェクト作成とテストコード生成",
+              "executor": "mcp",
+              "args": {
+                "connection": {
+                  "type": "stdio",
+                  "command": "uv",
+                  "args": ["run", "--directory", "./mcp_servers/claude_code_mcp", "main.py", "serve"]
+                },
+                "tool": "claude_code_query",
+                "arguments": {
+                  "prompt": "Rustで${$.inputs.module.name}ライブラリを作成してください。\n\nモジュール: ${$.inputs.module.name}\n説明: ${$.inputs.module.description}\n作業ディレクトリ: ${$.inputs.module.cwd}\n\nタスク:\n1. ディレクトリを作成: mkdir -p ${$.inputs.module.cwd}\n2. cargo init --lib を実行\n3. src/lib.rsにテストコードを書く\n   - 構造体の定義（フィールドは適切に）\n   - 各メソッドはtodo!()で実装\n   - テストは#[cfg(test)]内に3-4個書く\n\n完了したら 'SETUP_COMPLETE' と出力してください。",
+                  "options": {
+                    "model": "haiku",
+                    "cwd": "/tmp",
+                    "max_turns": 10,
+                    "allowed_tools": ["Read", "Write", "Edit", "Bash", "Glob"],
+                    "permission_mode": "acceptEdits"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "task_id": "develop_modules",
+      "name": "全モジュールをRalph Loopで並行開発",
+      "executor": "map",
+      "dependencies": ["setup_modules"],
+      "args": {
+        "source": "$.define_modules.output.modules",
+        "max_concurrency": 2,
+        "on_error": "continue",
+        "inputs": {
+          "module": "$.@item",
+          "index": "$.@index",
+          "total": "$.@length"
+        },
+        "dag": {
+          "loop_config": {
+            "max_iterations": 10,
+            "until_condition": "$.check_completion.output.parsed.completed == true"
+          },
+          "tasks": [
+            {
+              "task_id": "improve",
+              "name": "TDDによる反復実装",
+              "executor": "mcp",
+              "args": {
+                "connection": {
+                  "type": "stdio",
+                  "command": "uv",
+                  "args": ["run", "--directory", "./mcp_servers/claude_code_mcp", "main.py", "serve"]
+                },
+                "tool": "claude_code_query",
+                "arguments": {
+                  "prompt": "Rustで${$.inputs.module.name}をTDDで実装しています。\n\nイテレーション: ${$.loop.iteration}\n初回: ${$.loop.first}\nモジュール: ${$.inputs.module.name}\n説明: ${$.inputs.module.description}\n\nタスク:\n1. cargo test を実行\n2. 失敗しているテストを1つ選ぶ\n3. そのテストを通す最小限のコードを実装\n4. 再度テストを実行して確認\n\n前回の結果: ${$.loop.previous.improve.output}\n\n全テスト成功時は 'ALL_TESTS_PASSED'、まだ作業が必要なら 'TESTS_FAILING' を出力。",
+                  "options": {
+                    "model": "haiku",
+                    "cwd": "$.inputs.module.cwd",
+                    "max_turns": 10,
+                    "allowed_tools": ["Read", "Write", "Edit", "Grep", "Glob", "Bash"],
+                    "permission_mode": "acceptEdits"
+                  }
+                }
+              }
+            },
+            {
+              "task_id": "check_completion",
+              "name": "全テスト成功をチェック",
+              "executor": "bash",
+              "args": {
+                "command": "echo '${$.improve.output.content[0].text}' | grep -q 'ALL_TESTS_PASSED' && echo '{\"completed\": true}' || echo '{\"completed\": false}'"
+              },
+              "dependencies": ["improve"]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "task_id": "final_report",
+      "name": "最終レポート生成",
+      "executor": "data",
+      "args": {
+        "report_type": "collection_library_development",
+        "modules_developed": "$.develop_modules.output.length",
+        "succeeded": "$.develop_modules.output.succeeded",
+        "failed": "$.develop_modules.output.failed",
+        "message": "${$.define_modules.output.project_name}の並行開発が完了しました"
+      }
+    }
+  ],
+  "config": {
+    "max_concurrent_tasks": 4,
+    "default_task_timeout_secs": 600
+  }
+}
